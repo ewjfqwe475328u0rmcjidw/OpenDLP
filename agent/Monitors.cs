@@ -213,7 +213,7 @@ public sealed class UsbMonitor
             // DriveType 2 = removable; 3 = fixed (external USB HDDs report as fixed, so we check the bus below)
             _insert = Create(
                 "SELECT * FROM __InstanceCreationEvent WITHIN 2 WHERE TargetInstance ISA 'Win32_LogicalDisk' AND (TargetInstance.DriveType = 2 OR TargetInstance.DriveType = 3)",
-                e =>
+                (_, e) =>
                 {
                     var t = (ManagementBaseObject)e.NewEvent["TargetInstance"];
                     var drive = t["DeviceID"]?.ToString() ?? "";
@@ -224,7 +224,7 @@ public sealed class UsbMonitor
 
             _remove = Create(
                 "SELECT * FROM __InstanceDeletionEvent WITHIN 2 WHERE TargetInstance ISA 'Win32_LogicalDisk' AND (TargetInstance.DriveType = 2 OR TargetInstance.DriveType = 3)",
-                e =>
+                (_, e) =>
                 {
                     var t = (ManagementBaseObject)e.NewEvent["TargetInstance"];
                     var drive = t["DeviceID"]?.ToString() ?? "";
