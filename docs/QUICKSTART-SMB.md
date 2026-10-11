@@ -30,12 +30,14 @@ Test with: `curl -X POST -H "Authorization: Bearer $OPENDLP_ADMIN_TOKEN" https:/
 
 ## 3. Install the agent on a PC
 
-1. Install the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) if the PC does not have it. Download `OpenDLP-windows-vX.Y.Z.zip` from the Releases page and extract it.
+1. Download `OpenDLP-windows-x64-vX.Y.Z.zip` from the Releases page and extract it (no .NET install needed).
 2. Open **PowerShell as Administrator** in the `agent` folder:
    ```powershell
    .\install-service.ps1 -ServerUrl https://dlp.yourcompany.com -EnrollmentCode "<OPENDLP_ENROLL_CODE>" -WithWatchdog
    ```
 3. The PC appears in the dashboard within a minute. Its own access token is created automatically and stored encrypted on the machine — the enrollment code is never stored there.
+
+Macs and Linux machines: `curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.11.0/deploy-opendlp.sh | sudo bash -s -- --server-url https://dlp.yourcompany.com --enrollment-code "<code>"`. Rolling out to the whole company: the dashboard's **Deploy agents** page and [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Lost or stolen laptop? Dashboard/API → revoke the agent: `POST /api/v1/admin/agents/<id>/revoke`.
 

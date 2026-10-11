@@ -4,15 +4,15 @@
 
 | Area | How it is verified | Status |
 |---|---|---|
-| Server API (enrollment, roles, notifications, policy, CSV, retention) | 43 automated tests, every push | ✅ |
+| Server API (enrollment, roles, notifications, policy, charts, deploy page, CSV, retention) | 48 automated tests, every push | ✅ |
 | Docker image | built in CI, every push | ✅ |
-| Agent + watchdog compile (.NET 8, Windows) | CI, every push | ✅ |
-| Agent unit tests (detectors, checksums, masking, policy store, ECDSA, DPAPI) | xunit in CI | ✅ |
-| Console agent on a clean Windows VM: enrollment, DPAPI token store, signed policy, telemetry, text-file detection with masking, revocation | `tests/e2e/run-e2e.ps1` | ✅ |
-| Windows service install via `install-service.ps1`, `.docx`/`.xlsx` detection, recovery after crash, clean uninstall | `tests/e2e/run-service-e2e.ps1` | ✅ (from 0.11.0) |
-| Print monitoring | service E2E, soft check (WMI polling can miss very short jobs) | ⚠️ best effort |
-| USB removable drives, interactive clipboard helper, long-running stability | real hardware / desktop session needed | ❌ community reports welcome |
-| OS-level blocking | not implemented beyond audit/alert (USB `block` mode dismounts drives, untested) | ❌ |
+| Windows agent + watchdog compile, unit tests (detectors, checksums, masking, policy store, ECDSA, DPAPI) | CI on `windows-latest` | ✅ |
+| Windows console E2E: enrollment, DPAPI token, signed policy, telemetry, detection with masking, revocation | `tests/e2e/run-e2e.ps1` | ✅ |
+| Windows fleet/service E2E: `Deploy-OpenDLP.ps1` (checksum refusal, idempotent), service install, `.docx`/`.xlsx`, **printing**, crash recovery, clean uninstall | `tests/e2e/run-service-e2e.ps1` | ✅ |
+| macOS + Linux agent build and console E2E | `run-e2e.ps1` on `macos-latest` / `ubuntu-latest` | ✅ |
+| macOS + Linux fleet/service E2E: `deploy-opendlp.sh`, launchd / systemd, 0600 secrets, detection, restart after crash, uninstall | `tests/e2e/run-unix-service-e2e.ps1` | ✅ |
+| USB hardware, interactive clipboard helper, macOS Full Disk Access prompts, long-running stability | real hardware / desktop session needed | ❌ community reports welcome |
+| OS-level blocking | Windows USB `block` dismounts drives (untested on hardware); everything else is audit/alert | ⚠️ |
 
 ## Scope
 

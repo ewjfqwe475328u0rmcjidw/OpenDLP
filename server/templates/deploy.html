@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenDLP Deploy</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 24px; background: #0b1220; color: #e5eefc; max-width: 1100px; }
+    h1, h2 { margin: 0 0 12px; }
+    a { color: #7fb2f0; }
+    .card { background: #121a2b; border: 1px solid #243049; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .muted { color: #93a4c3; font-size: 13px; }
+    .warn { border-color: #6b5420; background: #221c0f; color: #ffd36e; }
+    pre { background: #0b1220; border: 1px solid #243049; border-radius: 8px; padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; font-size: 13px; padding-right: 76px; position: relative; }
+    button.copy { float: right; background: #1d2a44; color: #e5eefc; border: 1px solid #243049; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+    code { background: #1d2a44; padding: 1px 6px; border-radius: 4px; }
+    ol li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <p class="muted"><a href="/">&larr; Dashboard</a></p>
+  <h1>Deploy agents</h1>
+  <p class="muted">Server URL <code>{{ server_url }}</code> · release <a href="{{ release_page }}">{{ version }}</a> · this page shows a secret: do not screen-share it.</p>
+
+  {% if not enroll_ok %}
+  <div class="card warn">Self-enrollment is disabled. Set <code>OPENDLP_ENROLL_CODE</code> (at least 16 characters) in the server environment and restart, then reload this page.</div>
+  {% endif %}
+  {% if plain_http %}
+  <div class="card warn">Agents will talk to the server over plain HTTP. Use HTTPS outside a lab: <code>OPENDLP_DOMAIN=... docker compose --profile https up -d</code>, then set <code>OPENDLP_PUBLIC_URL</code>.</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Windows - many PCs (Group Policy, Intune, RMM)</h2>
+    <p class="muted">Paste into an elevated PowerShell to try it on one PC, or use the same script in your management tool. Runs silently, verifies the download, installs the service + watchdog, skips PCs that are already up to date. Log: <code>%ProgramData%\OpenDLP\deploy.log</code>.</p>
+    <pre><button class="copy">Copy</button>Set-ExecutionPolicy -Scope Process Bypass -Force; $f = Join-Path $env:TEMP 'Deploy-OpenDLP.ps1'; Invoke-WebRequest -UseBasicParsing '{{ release_base }}/Deploy-OpenDLP.ps1' -OutFile $f; & $f -ServerUrl '{{ server_url }}' -EnrollmentCode '{{ enroll_code }}'</pre>
+    <ol class="muted">
+      <li><b>Intune:</b> Devices &rarr; Scripts and remediations &rarr; Platform scripts &rarr; add <code>Deploy-OpenDLP.ps1</code> with the parameters in a one-line wrapper; run as system, 64-bit.</li>
+      <li><b>Group Policy:</b> Computer Configuration &rarr; Policies &rarr; Windows Settings &rarr; Scripts &rarr; Startup &rarr; PowerShell Scripts &rarr; add the script with <code>-ServerUrl ... -EnrollmentCode ...</code>.</li>
+      <li><b>No internet on the PCs?</b> Put <code>OpenDLP-windows-x64-{{ version }}.zip</code> on a share and add <code>-PackagePath \\server\share\OpenDLP-windows-x64-{{ version }}.zip -ExpectedSha256 &lt;hash from SHA256SUMS.txt&gt;</code>.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Windows - one PC</h2>
+    <p class="muted">Elevated PowerShell, in the <code>agent</code> folder of the extracted <a href="{{ release_page }}">release zip</a>:</p>
+    <pre><button class="copy">Copy</button>Set-ExecutionPolicy -Scope Process Bypass -Force; .\install-service.ps1 -ServerUrl '{{ server_url }}' -EnrollmentCode '{{ enroll_code }}' -WithWatchdog</pre>
+  </div>
+
+  <div class="card">
+    <h2>macOS and Linux - one or many machines (Jamf, Kandji, Intune for Mac, SSH, Ansible)</h2>
+    <pre><button class="copy">Copy</button>curl -fsSL '{{ release_base }}/deploy-opendlp.sh' | sudo bash -s -- --server-url '{{ server_url }}' --enrollment-code '{{ enroll_code }}'</pre>
+    <p class="muted">macOS: grant <code>/Library/Application Support/OpenDLP/bin/opendlp-agent</code> Full Disk Access (System Settings &rarr; Privacy &amp; Security), or push a PPPC profile from your MDM, so Desktop / Documents / Downloads can be monitored.</p>
+  </div>
+
+  <div class="card">
+    <h2>After a rollout</h2>
+    <ol class="muted">
+      <li>Machines appear on the <a href="/">dashboard</a> within a minute, with host name and version.</li>
+      <li>Rotate the enrollment code (change <code>OPENDLP_ENROLL_CODE</code> and restart) - enrolled machines keep their own tokens.</li>
+      <li>Lost or retired machine: <code>POST /api/v1/admin/agents/&lt;id&gt;/revoke</code>.</li>
+    </ol>
+  </div>
+
+  <script>
+    document.querySelectorAll("button.copy").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var text = b.parentElement.textContent.replace(/^Copy/, "");
+        navigator.clipboard.writeText(text).then(function () { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500); });
+      });
+    });
+  </script>
+</body>
+</html>

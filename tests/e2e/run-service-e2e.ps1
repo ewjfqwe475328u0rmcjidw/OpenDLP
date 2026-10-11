@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force -Path $work, $watch | Out-Null
 
 function New-Secret { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ }) }
 $admin = New-Secret; $enroll = New-Secret
-$port = 8766; $base = "http://127.0.0.1:$port"; $agentId = "e2e-service-01"
+$port = 8766; $base = "http://127.0.0.1:$port"; $agentId = $env:COMPUTERNAME   # Deploy-OpenDLP.ps1 enrolls with the computer name
 $serverLog = "$work\server.log"
 $agentLogDir = "$env:ProgramData\OpenDLP\logs"
 
@@ -63,11 +63,25 @@ function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
     Fail "timed out after ${seconds}s waiting for: $what"
 }
 
-# ---------- install exactly like an end user would ----------
+# ---------- install exactly like an administrator rolling out many PCs ----------
 if (-not (Test-Path "$Publish\OpenDLP.Agent.exe")) { Fail "published agent not found in $Publish" }
 if (-not (Test-Path "$Publish\OpenDLP.Watchdog.exe")) { Fail "published watchdog not found in $Publish" }
-& "$Publish\install-service.ps1" -InstallDir $installDir -ServerUrl $base -EnrollmentCode $enroll -AgentId $agentId `
-    -DisplayName "E2E service" -SensitivePaths $watch -WithWatchdog
+$zip = Join-Path $work "OpenDLP-windows-x64-e2e.zip"
+Compress-Archive -Path $Publish -DestinationPath $zip -Force
+$sha = (Get-FileHash $zip -Algorithm SHA256).Hash
+$deploy = Join-Path $root "deploy\windows\Deploy-OpenDLP.ps1"
+# a wrong checksum must be refused
+& pwsh -NoProfile -File $deploy -ServerUrl $base -EnrollmentCode $enroll -PackagePath $zip -ExpectedSha256 ("0" * 64) -InstallDir $installDir -Version "e2e"
+if ($LASTEXITCODE -eq 0) { Fail "deploy script accepted a package with a wrong checksum" }
+if (Get-Service $svc -ErrorAction SilentlyContinue) { Fail "service was installed despite a checksum mismatch" }
+Write-Host "ok: tampered package refused"
+& pwsh -NoProfile -File $deploy -ServerUrl $base -EnrollmentCode $enroll -PackagePath $zip -ExpectedSha256 $sha `
+    -InstallDir $installDir -Version "e2e" -SensitivePaths $watch
+if ($LASTEXITCODE -ne 0) { Fail "Deploy-OpenDLP.ps1 failed with exit code $LASTEXITCODE (see $env:ProgramData\OpenDLP\deploy.log)" }
+# re-running on an up-to-date machine must be a no-op
+$out = & pwsh -NoProfile -File $deploy -ServerUrl $base -EnrollmentCode $enroll -PackagePath $zip -ExpectedSha256 $sha -InstallDir $installDir -Version "e2e"
+if ($LASTEXITCODE -ne 0 -or -not ($out -match "already installed")) { Fail "second deploy run was not idempotent: $out" }
+Write-Host "ok: second deploy run skipped"
 if ((Get-Service $svc).Status -ne "Running") { Fail "service is not running after install" }
 Write-Output "ok: service installed and running"
 if (-not (Get-ScheduledTask -TaskName "OpenDLP Watchdog" -ErrorAction SilentlyContinue)) { Fail "watchdog task missing" }
@@ -143,4 +157,4 @@ Write-Output "ok: clean uninstall"
 
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "SERVICE E2E PASSED"
-"## OpenDLP service-mode test passed`n`n- install-service.ps1 with self-enrollment and watchdog`n- Windows service runs as SYSTEM and applies signed policy`n- detection inside .docx and .xlsx`n- recovery after the agent process is killed`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## OpenDLP service-mode test passed`n`n- Deploy-OpenDLP.ps1: checksum enforced, idempotent re-run`n- install-service.ps1 with self-enrollment and watchdog`n- Windows service runs as SYSTEM and applies signed policy`n- detection inside .docx and .xlsx`n- recovery after the agent process is killed`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY

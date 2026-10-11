@@ -1,6 +1,6 @@
 # OpenDLP v0.11.0
 
-Open-source **endpoint audit & detection MVP**: a Windows Agent + Watchdog + FastAPI central server. It is an **audit-first prototype**, not a finished commercial DLP product.
+Open-source **endpoint data-loss-prevention (audit & detection)** for small and medium businesses: agents for **Windows, macOS and Linux**, a watchdog, and a FastAPI central server with dashboard. It is an **audit-first prototype**, not a finished commercial DLP product.
 
 [繁體中文說明](README.zh-TW.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
@@ -8,13 +8,15 @@ Open-source **endpoint audit & detection MVP**: a Windows Agent + Watchdog + Fas
 >
 > **Limitations:** Current features focus on auditing, content detection and event reporting. USB, clipboard, print and browser policy fields do **not** mean reliable OS-level blocking exists in every scenario, and the browser extension is not included in this release. Do not rely on OpenDLP as your only line of defense against data leakage.
 
-**New here?** Read [docs/QUICKSTART-SMB.md](docs/QUICKSTART-SMB.md) — server + first PC in ~15 minutes. Compliance notes: [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
+**New here?** Read [docs/QUICKSTART-SMB.md](docs/QUICKSTART-SMB.md) — server + first PC in ~15 minutes. Rolling out to many machines: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Compliance notes: [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
 
 ## Features
 
-- **Agent (.NET 8, Windows):** file-activity monitoring on configured paths, content inspection of supported text/Office files (payment cards, IBAN, US SSN, passports in 9 languages, API keys/tokens, private keys, Taiwan national ID, bulk phone/e-mail, multilingual keywords, custom regex), removable-drive and print events, clipboard monitoring via a user-session helper, encrypted local log with a durable upload outbox.
-- **Server (FastAPI + SQLite):** telemetry ingestion, signed policy distribution (HMAC + optional ECDSA) with versioning, **agent self-enrollment** with per-machine tokens and revocation, admin/viewer roles, dashboard with 24 h severity tiles and filters, CSV export, **Slack/Teams/webhook and e-mail alerts**, age-based retention, one-command HTTPS deployment.
-- **Watchdog:** prototype process supervisor that restarts the agent when its heartbeat goes stale.
+- **Agent (.NET 8, Windows):** file-activity monitoring on configured paths, content inspection of supported text/Office files (payment cards, IBAN, US SSN, passports in 9 languages, API keys/tokens, private keys, Taiwan national ID, bulk phone/e-mail, multilingual keywords, custom regex), removable-drive events, print auditing (PrintService log), clipboard monitoring via a user-session helper, encrypted local log with a durable upload outbox.
+- **Server (FastAPI + SQLite):** telemetry ingestion, signed policy distribution (HMAC + optional ECDSA) with versioning, **agent self-enrollment** with per-machine tokens and revocation, admin/viewer roles, dashboard with severity tiles, hourly/daily charts and filters, CSV export, **Slack/Teams/webhook and e-mail alerts**, age-based retention, one-command HTTPS deployment.
+- **macOS / Linux agent:** same detection engine, removable-volume auditing, launchd / systemd service with automatic restart.
+- **Watchdog (Windows):** restarts the service when it stops or its heartbeat goes stale.
+- **Fleet deployment:** silent, checksum-verified, idempotent deploy scripts for Intune, Group Policy, RMM, Jamf, Kandji, SSH and Ansible; a dashboard page generates the commands.
 
 ## Project layout
 
@@ -22,6 +24,9 @@ Open-source **endpoint audit & detection MVP**: a Windows Agent + Watchdog + Fas
 OpenDLP/
 ├── agent/                  .NET 8 Windows endpoint agent (+ install scripts)
 ├── agent.tests/            xunit tests for the agent
+├── agent-unix/             macOS / Linux agent (shares the detection core) + install.sh
+├── deploy/                 fleet deployment scripts (Windows, macOS/Linux) and Caddyfile
+├── tests/e2e/              end-to-end tests run in CI on clean Windows, macOS and Linux VMs
 ├── watchdog/               Agent watchdog prototype
 ├── server/                 FastAPI API + dashboard
 ├── policies/default-policy.json
@@ -33,7 +38,8 @@ OpenDLP/
 
 ## Requirements
 
-- Windows Agent: Windows 10/11 and the .NET 8 SDK (some monitors need elevated permissions).
+- Windows agent: Windows 10/11 x64 (release packages are self-contained). Building from source: .NET 8 SDK.
+- macOS agent: macOS 12+ (Apple Silicon or Intel). Linux agent: x64 with systemd.
 - Server: Python 3.10+.
 
 ## Run the central server (development)
@@ -77,7 +83,7 @@ Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. 
 | `GET /api/v1/events` | Admin token | List recent events |
 | `GET /api/v1/agents` | Admin token | List agents and last-seen time |
 | `POST /api/v1/enroll` | enrollment code | Self-enroll; returns a per-machine token |
-| `GET /api/v1/stats`, `/events.csv` | Admin or viewer token | Statistics, CSV export |
+| `GET /api/v1/stats`, `/stats/timeseries`, `/events.csv` | Admin or viewer token | Statistics, chart data, CSV export |
 | `GET/PUT /api/v1/admin/policy` | viewer / admin | Read / replace the policy (validated) |
 | `POST /api/v1/admin/agents/{id}/revoke`, `/unrevoke`, `DELETE …/agents/{id}` | Admin token | Agent lifecycle |
 | `POST /api/v1/admin/notify/test` | Admin token | Send a test alert to webhook / e-mail |
@@ -96,7 +102,7 @@ Public HTTPS with automatic certificates: `OPENDLP_DOMAIN=dlp.example.com docker
 
 ## Configure and run the Agent
 
-**Recommended (self-enrollment):** download `OpenDLP-windows-vX.Y.Z.zip` from [Releases](../../releases), extract it, and in an elevated PowerShell in the `agent` folder run (requires the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)):
+**Recommended (self-enrollment):** download `OpenDLP-windows-x64-vX.Y.Z.zip` from [Releases](../../releases), extract it, and in an elevated PowerShell in the `agent` folder run:
 
 ```powershell
 .\install-service.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "<OPENDLP_ENROLL_CODE from the server .env>" -WithWatchdog
@@ -115,9 +121,13 @@ dotnet run -- --mode console
 
 Uninstall: `& "C:\Program Files\OpenDLP\uninstall-service.ps1"`.
 
+**macOS / Linux:** download `OpenDLP-macos-arm64|macos-x64|linux-x64-vX.Y.Z.tar.gz`, extract, then `sudo ./opendlp-agent/install.sh --server-url https://dlp.example.com --enrollment-code "<code>"`. On macOS grant the agent Full Disk Access (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
+
+**Many machines:** see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) or the dashboard's **Deploy agents** page.
+
 **Asymmetric policy signing (recommended):** on the server run `python tools/gen_signing_key.py /etc/opendlp/policy-signing.pem`, set `OPENDLP_SIGNING_KEY` to that path, and paste the printed public key into each agent's `PolicySigningPublicKey`. Agents then reject any policy not signed by the server's private key, even if the shared token leaks.
 
-Modes: `--mode console` for development, `--mode service` for Windows Service integration tests, `--mode helper` for the user-session helper. Service installation, helper startup and IPC permissions still need verification on a clean Windows test machine.
+Windows modes: `--mode console` (development), `--mode service` (installed service), `--mode helper` (per-user clipboard helper).
 
 Local logs may contain file paths and other sensitive information. Test only on authorized devices and check your organization's policy and applicable law first.
 
@@ -131,7 +141,7 @@ python -m pytest -q
 
 Agent unit tests (Windows, .NET 8 SDK): `dotnet test agent.tests/OpenDLP.Agent.Tests.csproj`
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the server tests and Docker build on Linux, and builds + unit-tests the Agent and Watchdog on Windows. Pushing a `v*` tag publishes a Windows zip to Releases.
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push: server tests, Docker build, Windows agent build + unit tests, and end-to-end tests on clean **Windows, macOS and Linux** VMs (fleet deploy script, service install, enrollment, signed policy, detection in text/Word/Excel files, printing, crash recovery, uninstall). Pushing a `v*` tag publishes packages for all platforms to Releases.
 
 For manual Windows testing, also cover: valid/invalid token, bad policy signature, offline retry, log retention, helper IPC permissions, and service start/stop.
 

@@ -1,14 +1,15 @@
 # Changelog
 
-## 0.11.0 — verified install
-First release where the Agent is built, unit-tested and end-to-end tested on clean Windows VMs in CI.
-- **Service-mode E2E test** (`tests/e2e/run-service-e2e.ps1`): installs with `install-service.ps1` exactly like an end user, verifies enrollment, signed policy, detection inside `.docx` / `.xlsx`, print monitoring (soft check), recovery after the agent process is killed, and clean uninstall.
-- **Watchdog rewritten** for service deployments: `--service OpenDLPAgent` restarts the Windows service when it stops or its heartbeat goes stale (previously it launched a second, console-mode agent). `--agent` mode kept for development.
-- **Installer fixes for worldwide use:** permissions use well-known SIDs (account names are localized on non-English Windows); `New-Service` instead of `sc.exe create` (paths with spaces on PowerShell 5.1); users can run the clipboard helper while the config stays admin-only; config is written straight to the install folder (no copy with the enrollment code left in Downloads); stops a previous install before copying; `-SensitivePaths` parameter.
-- Uninstaller stops the watchdog first so it cannot restart the service mid-uninstall.
-- Fixed `EventArrivedEventHandler` lambdas in the USB monitor (original code did not compile).
-- `server/.env.example` renamed to `server/env.example` (GitHub's web uploader skips dot-files).
-- Release zip now contains exactly the layout the service E2E test installs.
+## 0.11.0 — verified install, macOS/Linux agent, fleet deployment
+Every item below is exercised by CI on clean Windows, macOS and Linux VMs.
+- **macOS and Linux agent** (`agent-unix/`): shares the detection core with the Windows agent (content rules, policy signing, encrypted log, telemetry, self-enrollment); removable-volume auditing; `install.sh` / `uninstall.sh` for launchd and systemd (automatic restart). Token and config stored root-only (0600).
+- **Fleet deployment:** `Deploy-OpenDLP.ps1` (GPO / Intune / RMM) and `deploy-opendlp.sh` (Jamf / Kandji / MDM / SSH / Ansible) download the right package, enforce SHA-256, are idempotent, and log. New dashboard page **Deploy agents** with ready-to-copy commands. Guide: `docs/DEPLOYMENT.md`.
+- **Dashboard charts:** alerts per hour (24 h) and events per day (7 d), with a table view; `GET /api/v1/stats/timeseries`.
+- **Reliable print auditing:** reads the Windows PrintService operational log (event 307: printer, user, pages, document) instead of WMI polling, which missed short jobs. Print is now a mandatory CI check.
+- **Watchdog rewritten** for service deployments (`--service OpenDLPAgent`); previously it launched a second console-mode agent.
+- **Installer fixes for worldwide use:** well-known SIDs instead of localized account names; `New-Service` (paths with spaces on PowerShell 5.1); helper can run while the config stays admin-only; no config copy with secrets left in Downloads; previous install stopped before copying; `-SensitivePaths`.
+- Windows packages are self-contained (no .NET install needed). Release builds Windows x64, macOS arm64/x64 and Linux x64 with one `SHA256SUMS.txt`.
+- Fixes: USB monitor `EventArrivedEventHandler` lambdas (did not compile); E2E JSON-array unrolling; issue template YAML; `server/env.example` (dot-files are skipped by GitHub's web uploader).
 
 ## 0.10.1
 - Fix: removed the `System.IO.Pipes.AccessControl` 8.0.0 package reference (that version does not exist; the API is built into .NET 8). This broke every Agent build.

@@ -50,6 +50,10 @@ ENROLL_CODE = os.environ.get("OPENDLP_ENROLL_CODE", "").strip()
 VIEWER_TOKEN = os.environ.get("OPENDLP_VIEWER_TOKEN", "").strip()
 DASHBOARD_VIEWER_USER = os.environ.get("OPENDLP_DASHBOARD_VIEWER_USER", "viewer")
 DASHBOARD_VIEWER_PASSWORD = os.environ.get("OPENDLP_DASHBOARD_VIEWER_PASSWORD", "")
+# Public URL agents use to reach this server (shown on the deploy page); defaults to the URL the admin browsed to.
+PUBLIC_URL = os.environ.get("OPENDLP_PUBLIC_URL", "").strip().rstrip("/")
+# GitHub repository whose releases the deploy commands download from.
+RELEASE_REPO = os.environ.get("OPENDLP_RELEASE_REPO", "ewjfqwe475328u0rmcjidw/OpenDLP").strip()
 # Notifications for high/critical alerts: generic JSON webhook (Slack/Discord/Teams/Mattermost/n8n…) and/or SMTP e-mail.
 WEBHOOK_URL = os.environ.get("OPENDLP_WEBHOOK_URL", "").strip()
 NOTIFY_MIN_SEVERITY = os.environ.get("OPENDLP_NOTIFY_MIN_SEVERITY", "high").lower()
@@ -945,6 +949,29 @@ def dashboard(
                 {"id": "alerts24", "title": "Alerts per hour", "sub": "last 24 hours, UTC", "c": alerts_24h},
                 {"id": "events7", "title": "Events per day", "sub": "last 7 days, UTC", "c": events_7d},
             ],
+        },
+    )
+
+
+@app.get("/deploy", response_class=HTMLResponse)
+def deploy_page(request: Request, role: str = Depends(dashboard_auth)) -> HTMLResponse:
+    """Ready-to-copy rollout commands. Admin only: it shows the enrollment code."""
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    server_url = PUBLIC_URL or str(request.base_url).rstrip("/")
+    version = "v" + app.version
+    base = f"https://github.com/{RELEASE_REPO}/releases/download/{version}"
+    return templates.TemplateResponse(
+        request,
+        "deploy.html",
+        {
+            "server_url": server_url,
+            "enroll_code": ENROLL_CODE,
+            "enroll_ok": len(ENROLL_CODE.encode("utf-8")) >= 16,
+            "version": version,
+            "release_base": base,
+            "release_page": f"https://github.com/{RELEASE_REPO}/releases/tag/{version}",
+            "plain_http": server_url.startswith("http://") and not any(h in server_url for h in ("127.0.0.1", "localhost")),
         },
     )
 

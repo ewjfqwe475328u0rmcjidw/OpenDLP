@@ -36,7 +36,7 @@
 </head>
 <body>
   <h1>OpenDLP Central Dashboard</h1>
-  <p class="muted">UTC: {{ now }} · signed in as <span class="badge">{{ role }}</span></p>
+  <p class="muted">UTC: {{ now }} · signed in as <span class="badge">{{ role }}</span>{% if role == "admin" %} · <a href="/deploy" style="color:#7fb2f0">Deploy agents</a>{% endif %}</p>
 
   <div class="tiles">
     <div class="tile"><div class="n">{{ online }}<span class="muted"> / {{ agents|length }}</span></div><div class="l">Agents online</div></div>

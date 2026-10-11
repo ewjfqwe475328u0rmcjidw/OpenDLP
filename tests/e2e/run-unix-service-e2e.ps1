@@ -55,8 +55,19 @@ function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
 function Agent-Pid { (pgrep -f "opendlp-agent --config" 2>$null | Select-Object -First 1) }
 
 # ---------- install like an end user ----------
-sudo bash (Join-Path $Publish "install.sh") --server-url $base --enrollment-code $enroll --agent-id $agentId --display-name "E2E unix" --paths $watch
-if ($LASTEXITCODE -ne 0) { Fail "install.sh exited with $LASTEXITCODE" }
+$tgz = Join-Path $work "pkg.tar.gz"
+tar -C (Split-Path $Publish) -czf $tgz (Split-Path $Publish -Leaf)
+$sha = (Get-FileHash $tgz -Algorithm SHA256).Hash.ToLower()
+$deploy = Join-Path $root "deploy/unix/deploy-opendlp.sh"
+sudo bash $deploy --package $tgz --sha256 ("0" * 64) --version e2e --server-url $base --enrollment-code $enroll
+if ($LASTEXITCODE -eq 0) { Fail "deploy script accepted a package with a wrong checksum" }
+Write-Host "ok: tampered package refused"
+sudo bash $deploy --package $tgz --sha256 $sha --version e2e --server-url $base --enrollment-code $enroll --agent-id $agentId --display-name "E2E unix" --paths $watch
+if ($LASTEXITCODE -ne 0) { Fail "deploy-opendlp.sh exited with $LASTEXITCODE" }
+Start-Sleep 3
+$again = sudo bash $deploy --package $tgz --sha256 $sha --version e2e --server-url $base --enrollment-code $enroll
+if (-not ($again -match "already installed")) { Fail "second deploy run was not idempotent: $again" }
+Write-Host "ok: second deploy run skipped"
 
 Wait-Until { Invoke-RestMethod "$base/api/v1/agents" -Headers $H | ForEach-Object { $_ } | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "agent enrolled" | Out-Null
 $credMode = sudo stat $(if ($isMac) { "-f" } else { "-c" }) $(if ($isMac) { "%Sp" } else { "%A" }) (Join-Path $dataDir "credentials.bin")
@@ -92,4 +103,4 @@ Write-Host "ok: clean uninstall"
 
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "UNIX SERVICE E2E PASSED"
-"## OpenDLP $(if ($isMac) {'macOS'} else {'Linux'}) service test passed`n`n- install.sh with self-enrollment`n- root-only token and config (0600)`n- signed policy, content detection with masking`n- restart by $(if ($isMac) {'launchd'} else {'systemd'}) after crash`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## OpenDLP $(if ($isMac) {'macOS'} else {'Linux'}) service test passed`n`n- deploy-opendlp.sh: checksum enforced, idempotent re-run`n- install.sh with self-enrollment`n- root-only token and config (0600)`n- signed policy, content detection with masking`n- restart by $(if ($isMac) {'launchd'} else {'systemd'}) after crash`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY

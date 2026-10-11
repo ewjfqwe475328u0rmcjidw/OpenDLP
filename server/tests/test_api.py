@@ -36,6 +36,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "VIEWER_TOKEN", VIEWER)
     monkeypatch.setattr(main, "DASHBOARD_VIEWER_PASSWORD", "view-pass")
     monkeypatch.setattr(main, "WEBHOOK_URL", "")
+    monkeypatch.setattr(main, "PUBLIC_URL", "")
     monkeypatch.setattr(main, "SMTP_HOST", "")
     main._token_cache.clear()
     main._notify_last.clear()
@@ -494,3 +495,26 @@ def test_bar_chart_geometry():
     assert tallest["y"] == ch["top"] and tallest["h"] == ch["base"] - ch["top"]
     assert ch["bars"][0]["h"] == 0
     assert ch["bars"][1]["x"] + ch["bars"][1]["w"] < ch["bars"][2]["x"]  # gap between bars
+
+
+# ---------------------------------------------------------------- deploy page
+
+def test_deploy_page_admin_only_and_filled_in(client, monkeypatch):
+    c, _ = client
+    monkeypatch.setattr(main, "PUBLIC_URL", "https://dlp.example.com")
+    html = c.get("/deploy", auth=("admin", "dash-pass")).text
+    assert ENROLL in html and "https://dlp.example.com" in html
+    assert f"releases/download/v{main.app.version}/Deploy-OpenDLP.ps1" in html
+    assert "deploy-opendlp.sh" in html and "Self-enrollment is disabled" not in html
+    assert c.get("/deploy", auth=("viewer", "view-pass")).status_code == 403
+    assert c.get("/deploy").status_code == 401
+    assert "Deploy agents" in c.get("/", auth=("admin", "dash-pass")).text
+    assert "Deploy agents" not in c.get("/", auth=("viewer", "view-pass")).text
+
+
+def test_deploy_page_warnings(client, monkeypatch):
+    c, _ = client
+    monkeypatch.setattr(main, "ENROLL_CODE", "")
+    monkeypatch.setattr(main, "PUBLIC_URL", "http://10.0.0.5:8000")
+    html = c.get("/deploy", auth=("admin", "dash-pass")).text
+    assert "Self-enrollment is disabled" in html and "plain HTTP" in html
