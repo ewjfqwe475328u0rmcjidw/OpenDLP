@@ -10,6 +10,14 @@ Every failure is printed as a GitHub annotation together with the tail of the ag
 param([string]$AgentExe = "agent/bin/Release/net8.0-windows/OpenDLP.Agent.exe")
 # Cross-platform: the same test drives the Windows agent and the macOS/Linux agent (agent-unix).
 $ErrorActionPreference = "Stop"
+# Exit codes of native commands are checked explicitly (some calls are EXPECTED to fail).
+$PSNativeCommandUseErrorActionPreference = $false
+# Any unexpected script error becomes a public annotation with its line number.
+trap {
+    Write-Host "::error::E2E script error at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
+    Write-Host "::error::E2E   $($_.InvocationInfo.Line.Trim())"
+    break
+}
 $root = (Resolve-Path ".").Path
 $work = Join-Path $env:RUNNER_TEMP "opendlp-e2e"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
@@ -25,13 +33,13 @@ $serverLog = (Join-Path $work "server.log")
 $agentLog = (Join-Path $work "agent.log")
 
 function Fail([string]$msg) {
-    Write-Output "::error::E2E: $msg"
+    Write-Host "::error::E2E: $msg"
     foreach ($f in @($agentLog, "$agentLog.err", $serverLog, "$serverLog.err")) {
         if (Test-Path $f) {
-            Write-Output "----- $f (tail) -----"
+            Write-Host "----- $f (tail) -----"
             Get-Content $f -Tail 40 | ForEach-Object {
-                Write-Output $_
-                if ($_ -match 'error|exception|fail') { Write-Output "::error::$(Split-Path $f -Leaf): $($_.Trim())" }
+                Write-Host $_
+                if ($_ -match 'error|exception|fail') { Write-Host "::error::$(Split-Path $f -Leaf): $($_.Trim())" }
             }
         }
     }

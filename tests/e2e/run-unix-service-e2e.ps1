@@ -5,6 +5,14 @@ macOS / Linux service-mode end-to-end test (GitHub macos-latest / ubuntu-latest 
 #>
 param([string]$Publish = "out/unix")
 $ErrorActionPreference = "Stop"
+# Exit codes of native commands are checked explicitly (some calls are EXPECTED to fail).
+$PSNativeCommandUseErrorActionPreference = $false
+# Any unexpected script error becomes a public annotation with its line number.
+trap {
+    Write-Host "::error::UNIX-E2E script error at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
+    Write-Host "::error::UNIX-E2E   $($_.InvocationInfo.Line.Trim())"
+    break
+}
 $root = (Resolve-Path ".").Path
 $work = Join-Path $env:RUNNER_TEMP "opendlp-unix-e2e"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
@@ -19,12 +27,12 @@ $port = 8767; $base = "http://127.0.0.1:$port"; $agentId = "e2e-unix-01"
 $serverLog = Join-Path $work "server.log"
 
 function Fail([string]$msg) {
-    Write-Output "::error::UNIX-E2E: $msg"
+    Write-Host "::error::UNIX-E2E: $msg"
     foreach ($f in @("$serverLog.err", (Join-Path $dataDir "logs/agent.out.log"), (Join-Path $dataDir "logs/agent.err.log"))) {
-        Write-Output "----- $f -----"
-        sudo tail -n 30 $f 2>$null | ForEach-Object { Write-Output $_; if ($_ -match 'error|exception|fail') { Write-Output "::error::$(Split-Path $f -Leaf): $($_.Trim())" } }
+        Write-Host "----- $f -----"
+        sudo tail -n 30 $f 2>$null | ForEach-Object { Write-Host $_; if ($_ -match 'error|exception|fail') { Write-Host "::error::$(Split-Path $f -Leaf): $($_.Trim())" } }
     }
-    if (-not $isMac) { sudo journalctl -u opendlp-agent --no-pager -n 30 2>$null | ForEach-Object { Write-Output $_ } }
+    if (-not $isMac) { sudo journalctl -u opendlp-agent --no-pager -n 30 2>$null | ForEach-Object { Write-Host $_ } }
     sudo bash (Join-Path $Publish "uninstall.sh") --remove-data 2>$null | Out-Null
     exit 1
 }

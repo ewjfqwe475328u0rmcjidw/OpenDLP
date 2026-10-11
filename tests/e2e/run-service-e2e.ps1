@@ -9,6 +9,14 @@ Service-mode end-to-end test on a clean Windows VM (GitHub windows-latest runner
 #>
 param([string]$Publish = "out/agent")
 $ErrorActionPreference = "Stop"
+# Exit codes of native commands are checked explicitly (some calls are EXPECTED to fail).
+$PSNativeCommandUseErrorActionPreference = $false
+# Any unexpected script error becomes a public annotation with its line number.
+trap {
+    Write-Host "::error::SERVICE-E2E script error at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
+    Write-Host "::error::SERVICE-E2E   $($_.InvocationInfo.Line.Trim())"
+    break
+}
 $root = (Resolve-Path ".").Path
 $work = Join-Path $env:RUNNER_TEMP "opendlp-svc-e2e"
 $installDir = "C:\OpenDLP-e2e"
@@ -24,15 +32,15 @@ $serverLog = "$work\server.log"
 $agentLogDir = "$env:ProgramData\OpenDLP\logs"
 
 function Fail([string]$msg) {
-    Write-Output "::error::SERVICE-E2E: $msg"
-    Write-Output "----- service status -----"; Get-Service $svc -ErrorAction SilentlyContinue | Format-List | Out-String | Write-Output
+    Write-Host "::error::SERVICE-E2E: $msg"
+    Write-Host "----- service status -----"; Get-Service $svc -ErrorAction SilentlyContinue | Format-List | Out-String | Write-Host
     foreach ($f in @($serverLog, "$serverLog.err")) {
-        if (Test-Path $f) { Write-Output "----- $f -----"; Get-Content $f -Tail 30 }
+        if (Test-Path $f) { Write-Host "----- $f -----"; Get-Content $f -Tail 30 }
     }
-    Write-Output "----- Application event log (OpenDLP / .NET) -----"
+    Write-Host "----- Application event log (OpenDLP / .NET) -----"
     Get-WinEvent -LogName Application -MaxEvents 30 -ErrorAction SilentlyContinue |
         Where-Object { $_.ProviderName -match 'OpenDLP|\.NET Runtime|Application Error' } |
-        ForEach-Object { $m = ($_.Message -split "`n")[0..6] -join ' '; Write-Output "::error::eventlog: $m" }
+        ForEach-Object { $m = ($_.Message -split "`n")[0..6] -join ' '; Write-Host "::error::eventlog: $m" }
     & "$installDir\uninstall-service.ps1" -InstallDir $installDir -RemoveLogs 2>$null
     exit 1
 }
