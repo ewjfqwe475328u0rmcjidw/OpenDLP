@@ -70,14 +70,14 @@ $agent = Start-Process -FilePath $exe -ArgumentList "--mode console" -WorkingDir
 function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
     for ($i = 0; $i -lt $seconds; $i++) {
         if ($agent.HasExited) { Fail "agent exited early with code $($agent.ExitCode) while waiting for: $what" }
-        try { $r = & $cond; if ($r) { Write-Output "ok: $what"; return $r } } catch { }
+        try { $r = & $cond; if ($r) { Write-Host "ok: $what"; return $r } } catch { }
         Start-Sleep 1
     }
     Fail "timed out after ${seconds}s waiting for: $what"
 }
 
 # 1. enrollment
-$a = Wait-Until { (Invoke-RestMethod "$base/api/v1/agents" -Headers $H) | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "agent enrolled"
+$a = Wait-Until { (Invoke-RestMethod "$base/api/v1/agents" -Headers $H) | ForEach-Object { $_ } | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "agent enrolled"
 if (-not (Test-Path "$work\credentials.bin")) { Fail "DPAPI credential file was not written" }
 $raw = [IO.File]::ReadAllText("$work\credentials.bin")
 if ($raw -match '[A-Za-z0-9_-]{40,}') { Fail "credential file looks like plaintext" }

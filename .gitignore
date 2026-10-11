@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+logs/
+*.log
+*.heartbeat
+
+# Local secrets/configuration (commit only example config)
+.env
+agent/appsettings.json
+agent/agent.config.json
+.pytest_cache/

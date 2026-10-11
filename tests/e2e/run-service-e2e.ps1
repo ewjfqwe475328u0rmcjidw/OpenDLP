@@ -50,10 +50,14 @@ if (-not $up) { Fail "server did not start" }
 $H = @{ Authorization = "Bearer $admin" }
 Remove-Item Env:OPENDLP_TOKEN, Env:OPENDLP_ENROLL_CODE
 
-function Events([string]$type) { @(Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=$type&limit=500" -Headers $H) }
+# Invoke-RestMethod emits a JSON array as ONE pipeline object; unroll it so callers see individual events.
+function Events([string]$type) {
+    $r = Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=$type&limit=500" -Headers $H
+    return @($r | ForEach-Object { $_ })
+}
 function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
     for ($i = 0; $i -lt $seconds; $i++) {
-        try { $r = & $cond; if ($r) { Write-Output "ok: $what"; return $r } } catch { }
+        try { $r = & $cond; if ($r) { Write-Host "ok: $what"; return $r } } catch { }
         Start-Sleep 1
     }
     Fail "timed out after ${seconds}s waiting for: $what"
@@ -68,7 +72,7 @@ if ((Get-Service $svc).Status -ne "Running") { Fail "service is not running afte
 Write-Output "ok: service installed and running"
 if (-not (Get-ScheduledTask -TaskName "OpenDLP Watchdog" -ErrorAction SilentlyContinue)) { Fail "watchdog task missing" }
 
-Wait-Until { Invoke-RestMethod "$base/api/v1/agents" -Headers $H | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "service enrolled" | Out-Null
+Wait-Until { Invoke-RestMethod "$base/api/v1/agents" -Headers $H | ForEach-Object { $_ } | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "service enrolled" | Out-Null
 Wait-Until { (Events "POLICY_UPDATED").Count -ge 1 } 90 "service applied signed policy" | Out-Null
 $cfgText = Get-Content "$installDir\agent.config.json" -Raw
 if ($cfgText -match [regex]::Escape($admin)) { Fail "admin token leaked into agent config" }

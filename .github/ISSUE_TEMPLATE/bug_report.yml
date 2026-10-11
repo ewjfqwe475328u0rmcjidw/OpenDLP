@@ -4,7 +4,7 @@ labels: ["bug"]
 body:
   - type: textarea
     id: what
-    attributes: {label: What happened?, description: "Steps to reproduce, expected vs. actual. No secrets or personal data."}
+    attributes: {label: "What happened?", description: "Steps to reproduce, expected vs. actual. No secrets or personal data."}
     validations: {required: true}
   - type: input
     id: env
