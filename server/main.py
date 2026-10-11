@@ -68,7 +68,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="OpenDLP Central Server", version="0.10.0", lifespan=lifespan)
+app = FastAPI(title="OpenDLP Central Server", version="0.11.0", lifespan=lifespan)
 _basic = HTTPBasic(auto_error=False)
 
 

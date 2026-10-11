@@ -1,22 +1,18 @@
-# OpenDLP v0.10.0 — Release audit
+# OpenDLP v0.11.0 — Release audit
 
-## Verification status (honest summary)
+## Verification status
 
-| Area | Verified how | Status |
+| Area | How it is verified | Status |
 |---|---|---|
-| Server API | 43 automated tests, run in this environment | ✅ passing |
-| Policy / default rules | server-side validation + tests | ✅ |
-| Docker image | Dockerfile written; built in CI | ⏳ CI |
-| Agent C# (12 files + tests) | syntax parsed; **not compiled** here (no .NET SDK available) | ⏳ CI on Windows runner |
-| Agent unit tests | written with test vectors cross-checked in Python | ⏳ CI |
-| End-to-end on a clean Windows VM (enroll, policy, telemetry, file content detection, revoke) | `tests/e2e/run-e2e.ps1` in CI | ⏳ CI |
-| Detection on real user hardware (USB, printers, service mode, clipboard) | — | ❌ needs community testers |
-| Service installer scripts | reviewed only | ❌ needs community testers |
-| OS-level blocking | not implemented beyond audit/alert | ❌ |
-
-
-> v0.7.1 update: server hardened (see CHANGELOG.md); 25 server tests pass. The .NET Agent still has **not** been compiled by the maintainers — CI (`.github/workflows/ci.yml`) will do the first Windows build once pushed to GitHub. The dashboard authentication limitation below is resolved in 0.7.1.
-
+| Server API (enrollment, roles, notifications, policy, CSV, retention) | 43 automated tests, every push | ✅ |
+| Docker image | built in CI, every push | ✅ |
+| Agent + watchdog compile (.NET 8, Windows) | CI, every push | ✅ |
+| Agent unit tests (detectors, checksums, masking, policy store, ECDSA, DPAPI) | xunit in CI | ✅ |
+| Console agent on a clean Windows VM: enrollment, DPAPI token store, signed policy, telemetry, text-file detection with masking, revocation | `tests/e2e/run-e2e.ps1` | ✅ |
+| Windows service install via `install-service.ps1`, `.docx`/`.xlsx` detection, recovery after crash, clean uninstall | `tests/e2e/run-service-e2e.ps1` | ✅ (from 0.11.0) |
+| Print monitoring | service E2E, soft check (WMI polling can miss very short jobs) | ⚠️ best effort |
+| USB removable drives, interactive clipboard helper, long-running stability | real hardware / desktop session needed | ❌ community reports welcome |
+| OS-level blocking | not implemented beyond audit/alert (USB `block` mode dismounts drives, untested) | ❌ |
 
 ## Scope
 

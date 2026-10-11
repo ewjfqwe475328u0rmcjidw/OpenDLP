@@ -8,7 +8,7 @@ Goal: a working server and your first monitored PC in about 15 minutes, without 
 
 ```bash
 git clone https://github.com/<you>/OpenDLP.git && cd OpenDLP
-cp server/.env.example .env
+cp server/env.example .env
 python3 -c "import secrets; [print(secrets.token_urlsafe(48)) for _ in range(4)]"   # four secrets
 nano .env            # paste them into OPENDLP_TOKEN, OPENDLP_ADMIN_TOKEN, OPENDLP_ENROLL_CODE; set OPENDLP_DASHBOARD_PASSWORD
 ```
@@ -30,10 +30,10 @@ Test with: `curl -X POST -H "Authorization: Bearer $OPENDLP_ADMIN_TOKEN" https:/
 
 ## 3. Install the agent on a PC
 
-1. Download `OpenDLP-windows-vX.Y.Z.zip` from the Releases page and extract it.
+1. Install the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) if the PC does not have it. Download `OpenDLP-windows-vX.Y.Z.zip` from the Releases page and extract it.
 2. Open **PowerShell as Administrator** in the `agent` folder:
    ```powershell
-   .\install-service.ps1 -ServerUrl https://dlp.yourcompany.com -EnrollmentCode "<OPENDLP_ENROLL_CODE>"
+   .\install-service.ps1 -ServerUrl https://dlp.yourcompany.com -EnrollmentCode "<OPENDLP_ENROLL_CODE>" -WithWatchdog
    ```
 3. The PC appears in the dashboard within a minute. Its own access token is created automatically and stored encrypted on the machine — the enrollment code is never stored there.
 

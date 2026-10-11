@@ -1,6 +1,6 @@
 # OpenDLP server — one-command deployment.
 #
-#   cp server/.env.example .env     # fill in the secrets
+#   cp server/env.example .env     # fill in the secrets
 #   docker compose up -d            # API + dashboard on 127.0.0.1:8000
 #
 # Public HTTPS with automatic Let's Encrypt certificates (needs a DNS name pointing at this host, ports 80/443 open):

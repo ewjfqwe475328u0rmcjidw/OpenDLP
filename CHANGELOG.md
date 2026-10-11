@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0 — verified install
+First release where the Agent is built, unit-tested and end-to-end tested on clean Windows VMs in CI.
+- **Service-mode E2E test** (`tests/e2e/run-service-e2e.ps1`): installs with `install-service.ps1` exactly like an end user, verifies enrollment, signed policy, detection inside `.docx` / `.xlsx`, print monitoring (soft check), recovery after the agent process is killed, and clean uninstall.
+- **Watchdog rewritten** for service deployments: `--service OpenDLPAgent` restarts the Windows service when it stops or its heartbeat goes stale (previously it launched a second, console-mode agent). `--agent` mode kept for development.
+- **Installer fixes for worldwide use:** permissions use well-known SIDs (account names are localized on non-English Windows); `New-Service` instead of `sc.exe create` (paths with spaces on PowerShell 5.1); users can run the clipboard helper while the config stays admin-only; config is written straight to the install folder (no copy with the enrollment code left in Downloads); stops a previous install before copying; `-SensitivePaths` parameter.
+- Uninstaller stops the watchdog first so it cannot restart the service mid-uninstall.
+- Fixed `EventArrivedEventHandler` lambdas in the USB monitor (original code did not compile).
+- `server/.env.example` renamed to `server/env.example` (GitHub's web uploader skips dot-files).
+- Release zip now contains exactly the layout the service E2E test installs.
+
 ## 0.10.1
 - Fix: removed the `System.IO.Pipes.AccessControl` 8.0.0 package reference (that version does not exist; the API is built into .NET 8). This broke every Agent build.
 - CI: compiler/NuGet/test errors are re-emitted as public annotations (`tools/ci/run.ps1`).

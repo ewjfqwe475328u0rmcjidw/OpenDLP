@@ -1,10 +1,10 @@
-# OpenDLP v0.10.0
+# OpenDLP v0.11.0
 
 Open-source **endpoint audit & detection MVP**: a Windows Agent + Watchdog + FastAPI central server. It is an **audit-first prototype**, not a finished commercial DLP product.
 
 [繁體中文說明](README.zh-TW.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-> **⚠️ The Windows Agent is not yet verified.** The maintainers have not yet completed a C# build and real-device test on a clean Windows 10/11 + .NET 8 machine. Community testing is welcome — please use a disposable, authorized test machine, not a production or critical computer.
+> **Verification status:** every change is built and tested automatically on clean Windows VMs — unit tests, a console end-to-end test and a full Windows-service install/detect/recover/uninstall test (see [docs/RELEASE_AUDIT.md](docs/RELEASE_AUDIT.md)). USB devices and the interactive clipboard are not covered by automation yet; reports from real machines are very welcome.
 >
 > **Limitations:** Current features focus on auditing, content detection and event reporting. USB, clipboard, print and browser policy fields do **not** mean reliable OS-level blocking exists in every scenario, and the browser extension is not included in this release. Do not rely on OpenDLP as your only line of defense against data leakage.
 
@@ -66,7 +66,7 @@ uvicorn main:app --host 127.0.0.1 --port 8000
 
 Generate secrets with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
 
-Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. a TLS reverse proxy) outside of local testing. All environment variables are listed in `server/.env.example`.
+Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. a TLS reverse proxy) outside of local testing. All environment variables are listed in `server/env.example`.
 
 ### API overview
 
@@ -88,7 +88,7 @@ The default policy is `policies/default-policy.json` (override with `OPENDLP_POL
 ### Docker
 
 ```bash
-cp server/.env.example .env      # fill in the secrets
+cp server/env.example .env      # fill in the secrets
 docker compose up -d             # server on 127.0.0.1:8000; put a TLS reverse proxy in front for remote access
 ```
 
@@ -96,10 +96,10 @@ Public HTTPS with automatic certificates: `OPENDLP_DOMAIN=dlp.example.com docker
 
 ## Configure and run the Agent
 
-**Recommended (self-enrollment):** from the extracted release zip, in an elevated PowerShell:
+**Recommended (self-enrollment):** download `OpenDLP-windows-vX.Y.Z.zip` from [Releases](../../releases), extract it, and in an elevated PowerShell in the `agent` folder run (requires the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)):
 
 ```powershell
-.\install-service.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "<OPENDLP_ENROLL_CODE from the server .env>"
+.\install-service.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "<OPENDLP_ENROLL_CODE from the server .env>" -WithWatchdog
 ```
 
 The agent exchanges the code for its own token on first start and stores it encrypted (DPAPI, machine scope). Revoke a machine any time via the admin API.
@@ -113,7 +113,7 @@ dotnet build
 dotnet run -- --mode console
 ```
 
-To install as a service on a **test machine** (run as Administrator from the extracted release zip): `.\install-service.ps1` (and `.\uninstall-service.ps1` to remove).
+Uninstall: `& "C:\Program Files\OpenDLP\uninstall-service.ps1"`.
 
 **Asymmetric policy signing (recommended):** on the server run `python tools/gen_signing_key.py /etc/opendlp/policy-signing.pem`, set `OPENDLP_SIGNING_KEY` to that path, and paste the printed public key into each agent's `PolicySigningPublicKey`. Agents then reject any policy not signed by the server's private key, even if the shared token leaks.
 

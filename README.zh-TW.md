@@ -1,4 +1,4 @@
-# OpenDLP v0.10.0
+# OpenDLP v0.11.0
 
 開源 **端點稽核／偵測 MVP**（Windows Agent + Watchdog + FastAPI 中央伺服器）。目前定位是 **audit-first prototype**，不是已完成的商用 DLP。
 
@@ -53,7 +53,7 @@ $env:OPENDLP_DASHBOARD_PASSWORD = "儀表板密碼"
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Dashboard：<http://127.0.0.1:8000/>（HTTP Basic，帳號預設 `admin`）。仍請搭配 TLS 反向代理，不要以明文暴露到網際網路。完整環境變數見 `server/.env.example`，變更紀錄見 `CHANGELOG.md`。API 若未設定 `OPENDLP_TOKEN`，或 Token 少於 32 bytes，會拒絕請求。
+Dashboard：<http://127.0.0.1:8000/>（HTTP Basic，帳號預設 `admin`）。仍請搭配 TLS 反向代理，不要以明文暴露到網際網路。完整環境變數見 `server/env.example`，變更紀錄見 `CHANGELOG.md`。API 若未設定 `OPENDLP_TOKEN`，或 Token 少於 32 bytes，會拒絕請求。
 
 政策檔預設為 `policies/default-policy.json`；可用 `OPENDLP_POLICY` 指定其他 JSON 檔案。`GET /api/v1/policy` 會回傳以共享 token 衍生金鑰簽署的 HMAC envelope。這是原型設計，不是公鑰簽章；請使用 TLS 並妥善保護 token。
 
