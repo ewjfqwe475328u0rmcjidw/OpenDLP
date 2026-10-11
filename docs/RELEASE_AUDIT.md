@@ -9,7 +9,8 @@
 | Docker image | Dockerfile written; built in CI | ⏳ CI |
 | Agent C# (12 files + tests) | syntax parsed; **not compiled** here (no .NET SDK available) | ⏳ CI on Windows runner |
 | Agent unit tests | written with test vectors cross-checked in Python | ⏳ CI |
-| Detection on a real Windows machine | — | ❌ needs community testers |
+| End-to-end on a clean Windows VM (enroll, policy, telemetry, file content detection, revoke) | `tests/e2e/run-e2e.ps1` in CI | ⏳ CI |
+| Detection on real user hardware (USB, printers, service mode, clipboard) | — | ❌ needs community testers |
 | Service installer scripts | reviewed only | ❌ needs community testers |
 | OS-level blocking | not implemented beyond audit/alert | ❌ |
 

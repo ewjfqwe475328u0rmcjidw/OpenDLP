@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1
+- Fix: removed the `System.IO.Pipes.AccessControl` 8.0.0 package reference (that version does not exist; the API is built into .NET 8). This broke every Agent build.
+- CI: compiler/NuGet/test errors are re-emitted as public annotations (`tools/ci/run.ps1`).
+- **End-to-end test on a clean Windows VM** in CI (`tests/e2e/run-e2e.ps1`): server + agent, self-enrollment, DPAPI credential store, signed policy, telemetry, content detection with masking, and revocation.
+
 ## 0.10.0 — "ready for small businesses" round
 Server fully tested (43 tests). Agent changes compile-checked by CI only.
 - **Self-enrollment:** `POST /api/v1/enroll` exchanges a one-time `OPENDLP_ENROLL_CODE` for a per-machine token. Agent stores it encrypted with DPAPI (machine scope); re-enrolling rotates it; admins can revoke/unrevoke/delete agents.

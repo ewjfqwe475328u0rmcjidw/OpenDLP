@@ -205,7 +205,7 @@ public class SignatureTests
         using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
         var data = System.Text.Encoding.UTF8.GetBytes("{\"rules\":[]}");
         var sig = key.SignData(data, System.Security.Cryptography.HashAlgorithmName.SHA256,
-            System.Security.Cryptography.DSASignatureFormat.Rfc3240DerSequence);
+            System.Security.Cryptography.DSASignatureFormat.Rfc3279DerSequence);
         var pem = key.ExportSubjectPublicKeyInfoPem();
 
         using var pub = PolicySignature.LoadPublicKey(pem)!;

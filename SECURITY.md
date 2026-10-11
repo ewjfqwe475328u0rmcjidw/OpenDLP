@@ -1,4 +1,4 @@
-# Security Policy & Threat Model (OpenDLP v0.8.0)
+# Security Policy & Threat Model (OpenDLP v0.10.0)
 
 ## 1. Product scope
 
@@ -13,9 +13,10 @@ It is **not** a kernel-level DLP and must not be relied on to guarantee blocking
 | Agent host | Local administrator may be able to tamper with or disable the agent |
 | Local log key | Derived from AgentId + API token; demo-grade, not KMS/DPAPI |
 | Network path | Use HTTPS in production; local sample may use HTTP |
-| Agent token | Shared bearer token from `OPENDLP_TOKEN`, or optional per-agent tokens via `OPENDLP_AGENT_TOKENS` |
+| Agent token | Per-machine token issued at self-enrollment (stored hashed on the server, DPAPI-encrypted on the endpoint), or shared `OPENDLP_TOKEN` / static `OPENDLP_AGENT_TOKENS` |
+| Enrollment code | Shared one-time secret; anyone holding it can enroll a machine — rotate it after rollouts |
 | Admin token | Separate `OPENDLP_ADMIN_TOKEN` for reading events and the agent list |
-| Policy signature | HMAC-SHA256 with a key derived from the shared token; not asymmetric signing |
+| Policy signature | HMAC-SHA256 (token-derived key) always; optional ECDSA P-256 signature when `OPENDLP_SIGNING_KEY` / `PolicySigningPublicKey` are configured — recommended |
 | SQLite DB | Access control depends on OS file permissions |
 
 ## 3. Known limitations
@@ -35,8 +36,8 @@ It is **not** a kernel-level DLP and must not be relied on to guarantee blocking
 - Does not install or manage a Windows Service. Test the command-line mode and restart behavior separately.
 
 ### Server
-- Bearer tokens only (shared, or optional per-agent); no mTLS and no rate limiting.
-- The dashboard uses a single HTTP Basic password (`OPENDLP_DASHBOARD_PASSWORD`) and is disabled when unset. Put it behind HTTPS (e.g. a reverse proxy); never expose it over plain HTTP to the public internet.
+- Bearer tokens (per-machine via enrollment, shared, or static); no mTLS and no rate limiting yet.
+- The dashboard uses HTTP Basic with an admin and an optional read-only login (`OPENDLP_DASHBOARD_PASSWORD`) and is disabled when unset. Put it behind HTTPS (e.g. a reverse proxy); never expose it over plain HTTP to the public internet.
 - Event retention is a simple age-based purge at startup (`OPENDLP_RETENTION_DAYS`, default 90).
 - If `OPENDLP_TOKEN` / `OPENDLP_ADMIN_TOKEN` are unset or shorter than 32 bytes, the related endpoints fail closed.
 

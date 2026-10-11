@@ -170,7 +170,7 @@ public static class PolicySignature
         try
         {
             var sig = Convert.FromBase64String(pubSigBase64);
-            return key.VerifyData(data, sig, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3240DerSequence);
+            return key.VerifyData(data, sig, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
         }
         catch (FormatException) { return false; }
         catch (CryptographicException) { return false; }
