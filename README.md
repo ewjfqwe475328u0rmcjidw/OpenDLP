@@ -4,6 +4,22 @@ Open-source **endpoint data-loss-prevention (audit & detection)** for small and 
 
 [繁體中文說明](README.zh-TW.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
+![OpenDLP dashboard: agents online, alerts by severity, alerts per hour and events per day](docs/images/dashboard.png)
+
+## Download
+
+**[⬇ Latest release](../../releases/latest)** - ready-to-install packages, no compiler needed:
+
+| Platform | File | Install |
+|---|---|---|
+| Windows 10/11 (x64) | `OpenDLP-windows-x64-<version>.zip` | extract, elevated PowerShell in `agent`: `.\install-service.ps1 -ServerUrl ... -EnrollmentCode ... -WithWatchdog` |
+| macOS Apple Silicon / Intel | `OpenDLP-macos-arm64-…` / `OpenDLP-macos-x64-….tar.gz` | extract, `sudo ./opendlp-agent/install.sh --server-url ... --enrollment-code ...` |
+| Linux x64 (systemd) | `OpenDLP-linux-x64-<version>.tar.gz` | same as macOS |
+| Many machines | `Deploy-OpenDLP.ps1`, `deploy-opendlp.sh` | see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) or the dashboard's **Deploy agents** page |
+| Server | this repository | `docker compose up -d` - see [docs/QUICKSTART-SMB.md](docs/QUICKSTART-SMB.md) |
+
+Verify downloads with `SHA256SUMS.txt` from the same release.
+
 > **Verification status:** every change is built and tested automatically on clean Windows VMs — unit tests, a console end-to-end test and a full Windows-service install/detect/recover/uninstall test (see [docs/RELEASE_AUDIT.md](docs/RELEASE_AUDIT.md)). USB devices and the interactive clipboard are not covered by automation yet; reports from real machines are very welcome.
 >
 > **Limitations:** Current features focus on auditing, content detection and event reporting. USB, clipboard, print and browser policy fields do **not** mean reliable OS-level blocking exists in every scenario, and the browser extension is not included in this release. Do not rely on OpenDLP as your only line of defense against data leakage.
