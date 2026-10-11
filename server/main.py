@@ -42,6 +42,25 @@ DASHBOARD_INSECURE = os.environ.get("OPENDLP_DASHBOARD_INSECURE", "") == "1"
 EVENT_RETENTION_DAYS = int(os.environ.get("OPENDLP_RETENTION_DAYS", "90"))
 # An agent that has not polled the server for this long is shown as "offline".
 OFFLINE_AFTER_SECONDS = int(os.environ.get("OPENDLP_OFFLINE_AFTER_SECONDS", "300"))
+# Optional ECDSA P-256 private key (PEM) for asymmetric policy signatures. Generate with tools/gen_signing_key.py.
+SIGNING_KEY_PATH = os.environ.get("OPENDLP_SIGNING_KEY", "").strip()
+# Self-enrollment: an installer supplies this code once; the server issues that machine its own token.
+ENROLL_CODE = os.environ.get("OPENDLP_ENROLL_CODE", "").strip()
+# Read-only API token (dashboards, SIEM pull). Admin token can do everything a viewer can.
+VIEWER_TOKEN = os.environ.get("OPENDLP_VIEWER_TOKEN", "").strip()
+DASHBOARD_VIEWER_USER = os.environ.get("OPENDLP_DASHBOARD_VIEWER_USER", "viewer")
+DASHBOARD_VIEWER_PASSWORD = os.environ.get("OPENDLP_DASHBOARD_VIEWER_PASSWORD", "")
+# Notifications for high/critical alerts: generic JSON webhook (Slack/Discord/Teams/Mattermost/n8n…) and/or SMTP e-mail.
+WEBHOOK_URL = os.environ.get("OPENDLP_WEBHOOK_URL", "").strip()
+NOTIFY_MIN_SEVERITY = os.environ.get("OPENDLP_NOTIFY_MIN_SEVERITY", "high").lower()
+NOTIFY_COOLDOWN_SECONDS = int(os.environ.get("OPENDLP_NOTIFY_COOLDOWN_SECONDS", "300"))
+SMTP_HOST = os.environ.get("OPENDLP_SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("OPENDLP_SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("OPENDLP_SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("OPENDLP_SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("OPENDLP_SMTP_FROM", "")
+SMTP_TO = [x.strip() for x in os.environ.get("OPENDLP_SMTP_TO", "").split(",") if x.strip()]
+SMTP_STARTTLS = os.environ.get("OPENDLP_SMTP_STARTTLS", "1") != "0"
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -49,7 +68,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="OpenDLP Central Server", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="OpenDLP Central Server", version="0.10.0", lifespan=lifespan)
 _basic = HTTPBasic(auto_error=False)
 
 
@@ -94,6 +113,17 @@ def init_db() -> None:
             );
             """
         )
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(agents)")}
+        for col, ddl in (
+            ("token_hash", "TEXT"),
+            ("enrolled_at", "TEXT"),
+            ("revoked", "INTEGER NOT NULL DEFAULT 0"),
+            ("host", "TEXT"),
+            ("agent_version", "TEXT"),
+            ("display_name", "TEXT"),
+        ):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {ddl}")
         conn.commit()
         conn.close()
 
@@ -129,6 +159,23 @@ def _token_ok(candidate: str, expected: str) -> bool:
     return secrets.compare_digest(candidate.encode(), expected.encode())
 
 
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _enrolled_token_hash(agent_id: str) -> tuple[str | None, bool]:
+    """(token_hash, revoked) for an agent that enrolled through the API, else (None, False)."""
+    with _db_lock:
+        conn = db()
+        try:
+            row = conn.execute("SELECT token_hash, revoked FROM agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        finally:
+            conn.close()
+    if row is None or not row["token_hash"]:
+        return None, False
+    return row["token_hash"], bool(row["revoked"])
+
+
 def token_for_agent(agent_id: str) -> str:
     """The secret this agent authenticates with and signs policy with."""
     per_agent = _load_agent_tokens().get(agent_id)
@@ -154,32 +201,73 @@ def auth(
     if not x_agent_id or not x_agent_id.strip() or len(x_agent_id) > 128:
         raise HTTPException(status_code=400, detail="Missing or invalid X-Agent-Id header")
     agent_id = x_agent_id.strip()
+    enrolled_hash, revoked = _enrolled_token_hash(agent_id)
+    if enrolled_hash is not None:
+        if revoked:
+            raise HTTPException(status_code=403, detail="Agent has been revoked")
+        if not _token_ok(_hash_token(token), enrolled_hash):
+            raise HTTPException(status_code=403, detail="Invalid token")
+        _remember_token(agent_id, token)
+        return agent_id
     if not _token_ok(token, token_for_agent(agent_id)):
         raise HTTPException(status_code=403, detail="Invalid token")
     return agent_id
 
 
-def admin_auth(authorization: str | None = Header(default=None)) -> None:
-    """Administrative read access (agent list / events). Separate secret from agents."""
+# Enrolled agents' plaintext tokens are needed to sign their policy (HMAC). Keep them in memory
+# only; after a restart an agent's first request re-populates the cache.
+_token_cache: dict[str, str] = {}
+
+
+def _remember_token(agent_id: str, token: str) -> None:
+    _token_cache[agent_id] = token
+
+
+def signing_secret_for_agent(agent_id: str) -> str:
+    cached = _token_cache.get(agent_id)
+    if cached is not None:
+        return cached
+    return token_for_agent(agent_id)
+
+
+def admin_auth(authorization: str | None = Header(default=None)) -> str:
+    """Full administrative access. Returns the role name."""
     if not ADMIN_TOKEN or len(ADMIN_TOKEN.encode("utf-8")) < MIN_TOKEN_BYTES:
         raise HTTPException(status_code=503, detail="Server is not configured: set OPENDLP_ADMIN_TOKEN (>=32 bytes)")
     if not _token_ok(_bearer(authorization), ADMIN_TOKEN):
         raise HTTPException(status_code=403, detail="Invalid token")
+    return "admin"
 
 
-def dashboard_auth(credentials: HTTPBasicCredentials | None = Depends(_basic)) -> None:
+def viewer_auth(authorization: str | None = Header(default=None)) -> str:
+    """Read-only access: admin token or viewer token. Returns the role name."""
+    if not ADMIN_TOKEN or len(ADMIN_TOKEN.encode("utf-8")) < MIN_TOKEN_BYTES:
+        raise HTTPException(status_code=503, detail="Server is not configured: set OPENDLP_ADMIN_TOKEN (>=32 bytes)")
+    token = _bearer(authorization)
+    if _token_ok(token, ADMIN_TOKEN):
+        return "admin"
+    if VIEWER_TOKEN and len(VIEWER_TOKEN.encode("utf-8")) >= MIN_TOKEN_BYTES and _token_ok(token, VIEWER_TOKEN):
+        return "viewer"
+    raise HTTPException(status_code=403, detail="Invalid token")
+
+
+def dashboard_auth(credentials: HTTPBasicCredentials | None = Depends(_basic)) -> str:
+    """Returns 'admin' or 'viewer'."""
     if DASHBOARD_PASSWORD:
-        ok = credentials is not None and _token_ok(credentials.username, DASHBOARD_USER) and _token_ok(
-            credentials.password, DASHBOARD_PASSWORD
-        )
-        if not ok:
-            raise HTTPException(status_code=401, detail="Authentication required", headers={"WWW-Authenticate": "Basic"})
-        return
+        if credentials is not None:
+            if _token_ok(credentials.username, DASHBOARD_USER) and _token_ok(credentials.password, DASHBOARD_PASSWORD):
+                return "admin"
+            if DASHBOARD_VIEWER_PASSWORD and _token_ok(credentials.username, DASHBOARD_VIEWER_USER) and _token_ok(
+                credentials.password, DASHBOARD_VIEWER_PASSWORD
+            ):
+                return "viewer"
+        raise HTTPException(status_code=401, detail="Authentication required", headers={"WWW-Authenticate": "Basic"})
     if not DASHBOARD_INSECURE:
         raise HTTPException(
             status_code=404,
             detail="Dashboard disabled: set OPENDLP_DASHBOARD_PASSWORD (or OPENDLP_DASHBOARD_INSECURE=1 for local dev only)",
         )
+    return "admin"
 
 
 def _clean_ts(raw: Any, fallback: str) -> str:
@@ -207,11 +295,17 @@ def purge_old_events() -> int:
 
 
 @app.post("/api/v1/telemetry")
-def ingest(payload: TelemetryPayload, _agent: str = Depends(auth)) -> dict[str, Any]:
+def ingest(
+    payload: TelemetryPayload,
+    _agent: str = Depends(auth),
+    x_agent_version: str | None = Header(default=None),
+) -> dict[str, Any]:
     if not secrets.compare_digest(payload.agentId.encode(), _agent.encode()):
         raise HTTPException(status_code=403, detail="Agent ID header does not match payload")
     now = datetime.now(timezone.utc).isoformat()
     inserted = 0
+    notify: list[dict[str, Any]] = []
+    seen_host = ""
 
     with _db_lock:
         conn = db()
@@ -224,6 +318,9 @@ def ingest(payload: TelemetryPayload, _agent: str = Depends(auth)) -> dict[str, 
                 event_type = str(ev.get("eventType") or "")[:64]
                 message = str(ev.get("message") or "")[:MAX_MESSAGE_LEN]
                 host = str(ev.get("host") or "")[:128]
+                seen_host = host or seen_host
+                if level == "ALERT" and _severity_rank(_severity_of(message)) >= _severity_rank(NOTIFY_MIN_SEVERITY):
+                    notify.append({"agent_id": payload.agentId, "host": host, "ts": ts, "event_type": event_type, "message": message})
 
                 conn.execute(
                     """
@@ -244,11 +341,102 @@ def ingest(payload: TelemetryPayload, _agent: str = Depends(auth)) -> dict[str, 
                 """,
                 (payload.agentId, now, f"batch={inserted}"),
             )
+            conn.execute(
+                "UPDATE agents SET host = COALESCE(NULLIF(?, ''), host), agent_version = COALESCE(?, agent_version) WHERE agent_id = ?",
+                (seen_host, (x_agent_version or "")[:32] or None, payload.agentId),
+            )
             conn.commit()
         finally:
             conn.close()
 
+    if notify:
+        send_notifications(notify)
     return {"ok": True, "inserted": inserted}
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+_SEV_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+
+
+def _severity_rank(sev: str) -> int:
+    return _SEV_RANK.get(sev, 0)
+
+
+def _severity_of(message: str) -> str:
+    """Agent alert messages start with 'severity=<level> ...'."""
+    if message.startswith("severity="):
+        return message[9:].split(" ", 1)[0].lower()
+    return "medium"
+
+
+_notify_last: dict[str, float] = {}
+
+
+def _cooldown_ok(key: str) -> bool:
+    import time
+
+    now = time.monotonic()
+    last = _notify_last.get(key)
+    if last is not None and now - last < NOTIFY_COOLDOWN_SECONDS:
+        return False
+    _notify_last[key] = now
+    return True
+
+
+def deliver_webhook(url: str, body: dict[str, Any]) -> None:
+    import urllib.request
+
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=10):  # noqa: S310 - operator-configured URL
+        pass
+
+
+def deliver_email(subject: str, text: str) -> None:
+    import smtplib
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = SMTP_FROM or SMTP_USER
+    msg["To"] = ", ".join(SMTP_TO)
+    msg.set_content(text)
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
+        if SMTP_STARTTLS:
+            smtp.starttls()
+        if SMTP_USER:
+            smtp.login(SMTP_USER, SMTP_PASSWORD)
+        smtp.send_message(msg)
+
+
+def send_notifications(alerts: list[dict[str, Any]]) -> int:
+    """Fan alerts out to the configured channels in a background thread. Returns how many alerts were dispatched."""
+    if not WEBHOOK_URL and not (SMTP_HOST and SMTP_TO):
+        return 0
+    todo = [a for a in alerts if _cooldown_ok(f"{a['agent_id']}|{a['event_type']}")]
+    if not todo:
+        return 0
+
+    def run() -> None:
+        for a in todo:
+            summary = f"[OpenDLP] {_severity_of(a['message']).upper()} alert on {a['agent_id']} ({a['host'] or 'unknown host'}): {a['event_type']}"
+            body = {"text": summary + "\n" + a["message"][:1000], "content": summary, **a}
+            if WEBHOOK_URL:
+                try:
+                    deliver_webhook(WEBHOOK_URL, body)
+                except Exception:  # noqa: BLE001 - never let notification failures affect ingestion
+                    pass
+            if SMTP_HOST and SMTP_TO:
+                try:
+                    deliver_email(summary, f"{summary}\n\nTime: {a['ts']}\n\n{a['message']}")
+                except Exception:  # noqa: BLE001
+                    pass
+
+    threading.Thread(target=run, daemon=True).start()
+    return len(todo)
 
 
 POLICY_PATH = Path(os.environ.get("OPENDLP_POLICY", Path(__file__).resolve().parent.parent / "policies" / "default-policy.json"))
@@ -259,6 +447,8 @@ POLICY_VERSION: int | None = int(_env_version) if _env_version else None
 _SEVERITIES = {"low", "medium", "high", "critical"}
 _ACTIONS = {"log", "alert", "block"}
 _RULE_TYPES = {"builtin", "keywords", "regex"}
+# Must match ContentScanner.RunBuiltin in agent/Scanner.cs
+BUILTIN_DETECTORS = {"tw_national_id", "credit_card", "tw_mobile", "email", "tw_passport", "api_key", "private_key", "iban", "us_ssn", "passport"}
 
 
 def validate_policy(obj: Any) -> list[str]:
@@ -293,8 +483,8 @@ def validate_policy(obj: Any) -> list[str]:
             errs.append(f"{where}.action must be one of {sorted(_ACTIONS)}")
         if not isinstance(r.get("minMatches", 1), int) or r.get("minMatches", 1) < 1:
             errs.append(f"{where}.minMatches must be an integer >= 1")
-        if rtype == "builtin" and not r.get("detector"):
-            errs.append(f"{where}.detector is required for builtin rules")
+        if rtype == "builtin" and r.get("detector") not in BUILTIN_DETECTORS:
+            errs.append(f"{where}.detector must be one of {sorted(BUILTIN_DETECTORS)}")
         if rtype == "keywords" and not (isinstance(r.get("keywords"), list) and r["keywords"]):
             errs.append(f"{where}.keywords must be a non-empty list")
         if rtype == "regex":
@@ -308,6 +498,34 @@ def validate_policy(obj: Any) -> list[str]:
     if usb_mode not in {"audit", "block"}:
         errs.append("usb.mode must be 'audit' or 'block'")
     return errs
+
+
+def _load_signing_key():
+    if not SIGNING_KEY_PATH:
+        return None
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        key = serialization.load_pem_private_key(Path(SIGNING_KEY_PATH).read_bytes(), password=None)
+        if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
+            raise HTTPException(status_code=500, detail="OPENDLP_SIGNING_KEY must be an ECDSA P-256 key")
+        return key
+    except HTTPException:
+        raise
+    except Exception as exc:  # unreadable / malformed key: fail closed rather than ship unsigned policy
+        raise HTTPException(status_code=500, detail="Policy signing key is unreadable") from exc
+
+
+def asymmetric_sign(data: bytes) -> str | None:
+    key = _load_signing_key()
+    if key is None:
+        return None
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    import base64
+
+    return base64.b64encode(key.sign(data, ec.ECDSA(hashes.SHA256()))).decode("ascii")
 
 
 def policy_envelope(agent_id: str) -> dict[str, Any]:
@@ -327,10 +545,14 @@ def policy_envelope(agent_id: str) -> dict[str, Any]:
     # mirrors AgentConfig.PolicyVerifyKey(); this is a shared-secret design, not
     # asymmetric signing. Use TLS and protect the token in any real deployment.
     policy_json = json.dumps(policy_obj, ensure_ascii=False, separators=(",", ":"))
-    verify_key = hashlib.sha256(token_for_agent(agent_id).encode("utf-8")).hexdigest().encode("utf-8")
+    verify_key = hashlib.sha256(signing_secret_for_agent(agent_id).encode("utf-8")).hexdigest().encode("utf-8")
     sig = hmac.new(verify_key, policy_json.encode("utf-8"), hashlib.sha256).hexdigest()
     version = POLICY_VERSION if POLICY_VERSION is not None else mtime
-    return {"version": version, "policyJson": policy_json, "sig": sig}
+    envelope: dict[str, Any] = {"version": version, "policyJson": policy_json, "sig": sig}
+    pub_sig = asymmetric_sign(policy_json.encode("utf-8"))
+    if pub_sig is not None:
+        envelope["pubSig"] = pub_sig
+    return envelope
 
 
 @app.get("/api/v1/policy", response_model=None)
@@ -355,13 +577,16 @@ def query_agents() -> list[dict[str, Any]]:
         conn = db()
         try:
             rows = conn.execute(
-                "SELECT agent_id, last_seen, last_event FROM agents ORDER BY last_seen DESC"
+                "SELECT agent_id, last_seen, last_event, enrolled_at, revoked, host, agent_version, display_name, "
+                "CASE WHEN token_hash IS NULL THEN 0 ELSE 1 END AS enrolled FROM agents ORDER BY last_seen DESC"
             ).fetchall()
         finally:
             conn.close()
     out = [dict(r) for r in rows]
     for r in out:
-        r["status"] = agent_status(r["last_seen"])
+        r["revoked"] = bool(r["revoked"])
+        r["enrolled"] = bool(r["enrolled"])
+        r["status"] = "revoked" if r["revoked"] else agent_status(r["last_seen"])
     return out
 
 
@@ -411,7 +636,7 @@ def query_events(
 
 
 @app.get("/api/v1/agents")
-def list_agents(_admin: None = Depends(admin_auth)) -> list[dict[str, Any]]:
+def list_agents(_role: str = Depends(viewer_auth)) -> list[dict[str, Any]]:
     return query_agents()
 
 
@@ -423,7 +648,7 @@ def list_events(
     event_type: str | None = None,
     since: str | None = None,
     q: str | None = None,
-    _admin: None = Depends(admin_auth),
+    _role: str = Depends(viewer_auth),
 ) -> list[dict[str, Any]]:
     return query_events(min(limit, 500), agent_id, level, event_type, since, q)
 
@@ -442,7 +667,7 @@ def export_events_csv(
     event_type: str | None = None,
     since: str | None = None,
     q: str | None = None,
-    _admin: None = Depends(admin_auth),
+    _role: str = Depends(viewer_auth),
 ) -> Response:
     rows = query_events(limit, agent_id, level, event_type, since, q)
     buf = io.StringIO()
@@ -459,7 +684,7 @@ def export_events_csv(
 
 
 @app.get("/api/v1/stats")
-def stats(_admin: None = Depends(admin_auth)) -> dict[str, Any]:
+def stats(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     with _db_lock:
         conn = db()
@@ -492,7 +717,7 @@ def stats(_admin: None = Depends(admin_auth)) -> dict[str, Any]:
 
 
 @app.get("/api/v1/admin/policy")
-def admin_get_policy(_admin: None = Depends(admin_auth)) -> dict[str, Any]:
+def admin_get_policy(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
     try:
         obj = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
         mtime = int(POLICY_PATH.stat().st_mtime)
@@ -502,7 +727,7 @@ def admin_get_policy(_admin: None = Depends(admin_auth)) -> dict[str, Any]:
 
 
 @app.put("/api/v1/admin/policy")
-def admin_put_policy(policy: dict[str, Any], _admin: None = Depends(admin_auth)) -> dict[str, Any]:
+def admin_put_policy(policy: dict[str, Any], _admin: str = Depends(admin_auth)) -> dict[str, Any]:
     """Validate and atomically replace the policy; the previous file is kept as <name>.bak."""
     problems = validate_policy(policy)
     if problems:
@@ -525,16 +750,121 @@ def admin_put_policy(policy: dict[str, Any], _admin: None = Depends(admin_auth))
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Self-enrollment and agent administration
+# ---------------------------------------------------------------------------
+class EnrollRequest(BaseModel):
+    agentId: str = Field(min_length=1, max_length=128)
+    enrollmentCode: str = Field(min_length=1, max_length=256)
+    host: str | None = Field(default=None, max_length=128)
+    displayName: str | None = Field(default=None, max_length=128)
+
+
+@app.post("/api/v1/enroll")
+def enroll(req: EnrollRequest) -> dict[str, Any]:
+    """Exchange the one-time enrollment code for a per-machine token. Re-enrolling an existing,
+    non-revoked agent rotates its token (so a reinstalled machine keeps working)."""
+    if not ENROLL_CODE or len(ENROLL_CODE.encode("utf-8")) < 16:
+        raise HTTPException(status_code=503, detail="Enrollment disabled: set OPENDLP_ENROLL_CODE (>=16 bytes)")
+    if not _token_ok(req.enrollmentCode, ENROLL_CODE):
+        raise HTTPException(status_code=403, detail="Invalid enrollment code")
+    agent_id = req.agentId.strip()
+    if not agent_id:
+        raise HTTPException(status_code=422, detail="agentId required")
+    _, revoked = _enrolled_token_hash(agent_id)
+    if revoked:
+        raise HTTPException(status_code=403, detail="Agent has been revoked; an administrator must un-revoke it first")
+    token = secrets.token_urlsafe(48)
+    now = datetime.now(timezone.utc).isoformat()
+    with _db_lock:
+        conn = db()
+        try:
+            conn.execute(
+                """
+                INSERT INTO agents(agent_id, last_seen, last_event, token_hash, enrolled_at, host, display_name)
+                VALUES (?, ?, 'enrolled', ?, ?, ?, ?)
+                ON CONFLICT(agent_id) DO UPDATE SET
+                    token_hash=excluded.token_hash, enrolled_at=excluded.enrolled_at,
+                    host=COALESCE(excluded.host, agents.host), display_name=COALESCE(excluded.display_name, agents.display_name)
+                """,
+                (agent_id, now, _hash_token(token), now, req.host, req.displayName),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    _remember_token(agent_id, token)
+    return {"agentId": agent_id, "token": token, "policyPollSeconds": 60}
+
+
+@app.post("/api/v1/admin/agents/{agent_id}/revoke")
+def revoke_agent(agent_id: str, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    with _db_lock:
+        conn = db()
+        try:
+            cur = conn.execute("UPDATE agents SET revoked = 1 WHERE agent_id = ?", (agent_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    _token_cache.pop(agent_id, None)
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    return {"ok": True, "agent_id": agent_id, "revoked": True}
+
+
+@app.post("/api/v1/admin/agents/{agent_id}/unrevoke")
+def unrevoke_agent(agent_id: str, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    with _db_lock:
+        conn = db()
+        try:
+            cur = conn.execute("UPDATE agents SET revoked = 0 WHERE agent_id = ?", (agent_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    return {"ok": True, "agent_id": agent_id, "revoked": False}
+
+
+@app.delete("/api/v1/admin/agents/{agent_id}")
+def delete_agent(agent_id: str, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    """Remove an agent record (its events are kept for audit)."""
+    with _db_lock:
+        conn = db()
+        try:
+            cur = conn.execute("DELETE FROM agents WHERE agent_id = ?", (agent_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    _token_cache.pop(agent_id, None)
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    return {"ok": True}
+
+
+@app.post("/api/v1/admin/notify/test")
+def notify_test(_admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    n = send_notifications([{
+        "agent_id": "test", "host": "test-host", "ts": datetime.now(timezone.utc).isoformat(),
+        "event_type": "NOTIFY_TEST", "message": "severity=critical This is a test notification from OpenDLP",
+    }])
+    return {"dispatched": n, "webhook": bool(WEBHOOK_URL), "email": bool(SMTP_HOST and SMTP_TO)}
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
     level: str = "",
     agent_id: str = "",
     q: str = "",
-    _auth: None = Depends(dashboard_auth),
+    role: str = Depends(dashboard_auth),
 ) -> HTMLResponse:
     agents = query_agents()
     events = query_events(100, agent_id or None, level or None, None, None, q or None)
+    since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    sev = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for e in query_events(5000, None, "ALERT", None, since, None):
+        sev[_severity_of(e["message"])] = sev.get(_severity_of(e["message"]), 0) + 1
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -546,6 +876,8 @@ def dashboard(
             "f_agent": agent_id,
             "f_q": q,
             "online": sum(1 for a in agents if a["status"] == "online"),
+            "role": role,
+            "sev": sev,
         },
     )
 

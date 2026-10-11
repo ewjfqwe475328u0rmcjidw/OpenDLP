@@ -1,5 +1,9 @@
 {
   "AgentId": "PC-DEMO-001",
+  "DisplayName": "",
+  "ServerUrl": "https://dlp.example.com",
+  "EnrollmentCode": "",
+  "ApiToken": "",
   "SensitivePaths": [
     "{AllUsers}\\Desktop",
     "{AllUsers}\\Documents",
@@ -7,13 +11,12 @@
   ],
   "LogDirectory": "%ProgramData%\\OpenDLP\\logs",
   "PolicyCachePath": "%ProgramData%\\OpenDLP\\policy\\policy.json",
-  "TelemetryEnabled": false,
-  "ServerUrl": "",
-  "ApiToken": "",
+  "TelemetryEnabled": true,
   "PolicyPollSeconds": 60,
   "LogRetentionDays": 30,
   "MaxScanBytes": 4000000,
   "RapidWindowSeconds": 10,
   "RapidThreshold": 30,
-  "HighEntropyThreshold": 7.5
+  "HighEntropyThreshold": 7.5,
+  "PolicySigningPublicKey": ""
 }

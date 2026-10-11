@@ -1,5 +1,10 @@
-# Usage: copy server/.env.example to .env, fill in the secrets, then: docker compose up -d
-# Put a TLS reverse proxy (Caddy, nginx, Traefik) in front before exposing this beyond localhost.
+# OpenDLP server — one-command deployment.
+#
+#   cp server/.env.example .env     # fill in the secrets
+#   docker compose up -d            # API + dashboard on 127.0.0.1:8000
+#
+# Public HTTPS with automatic Let's Encrypt certificates (needs a DNS name pointing at this host, ports 80/443 open):
+#   OPENDLP_DOMAIN=dlp.example.com docker compose --profile https up -d
 services:
   opendlp-server:
     build:
@@ -12,5 +17,23 @@ services:
       - opendlp-data:/data
       - ./policies:/app/policies
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      OPENDLP_DOMAIN: ${OPENDLP_DOMAIN:?set OPENDLP_DOMAIN=your.dns.name}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [opendlp-server]
+    restart: unless-stopped
+
 volumes:
   opendlp-data:
+  caddy-data:
+  caddy-config:

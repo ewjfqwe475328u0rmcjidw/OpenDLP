@@ -26,6 +26,12 @@ public sealed class AgentConfig
     public int RapidWindowSeconds { get; init; } = 10;
     public int RapidThreshold { get; init; } = 30;
     public double HighEntropyThreshold { get; init; } = 7.5;
+    /// <summary>PEM-encoded ECDSA P-256 public key. When set, policies must also carry a valid asymmetric signature.</summary>
+    public string PolicySigningPublicKey { get; init; } = "";
+    /// <summary>One-time enrollment code (OPENDLP_ENROLL_CODE on the server). Used only when no token is available.</summary>
+    public string EnrollmentCode { get; init; } = "";
+    public string CredentialPath { get; init; } = Enrollment.DefaultCredentialPath;
+    public string DisplayName { get; init; } = "";
 
     /// <summary>Helper (user-session) mode never reads the secret config file.</summary>
     public static AgentConfig Defaults() => new();
@@ -60,25 +66,45 @@ public sealed class AgentConfig
             }
         }
 
-        // Environment variable wins so the token never has to live in a file
+        var credentialPath = Environment.ExpandEnvironmentVariables(Str("CredentialPath", Enrollment.DefaultCredentialPath));
+        var serverUrl = Str("ServerUrl", "");
+        var agentId = Str("AgentId", Environment.MachineName);
+        var enrollCode = Environment.GetEnvironmentVariable("OPENDLP_ENROLL_CODE");
+        if (string.IsNullOrWhiteSpace(enrollCode)) enrollCode = Str("EnrollmentCode", "");
+
+        // Token precedence: environment variable > config file > DPAPI credential store > self-enrollment.
         var token = Environment.GetEnvironmentVariable("OPENDLP_TOKEN");
         if (string.IsNullOrWhiteSpace(token)) token = Str("ApiToken", "");
+        if (string.IsNullOrWhiteSpace(token)) token = Enrollment.LoadToken(credentialPath);
+        if (string.IsNullOrWhiteSpace(token) && !string.IsNullOrWhiteSpace(enrollCode) && serverUrl.Length > 0)
+        {
+            token = Enrollment.Enroll(serverUrl, agentId, enrollCode.Trim(), Str("DisplayName", ""), m => Console.WriteLine($"[ENROLL] {m}"));
+            if (!string.IsNullOrEmpty(token))
+            {
+                try { Enrollment.SaveToken(credentialPath, token); }
+                catch (Exception ex) { Console.Error.WriteLine($"[ENROLL] Could not persist token: {ex.Message}"); }
+            }
+        }
 
         return new AgentConfig
         {
-            AgentId = Str("AgentId", Environment.MachineName),
+            AgentId = agentId,
             SensitivePaths = paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             LogDirectory = Environment.ExpandEnvironmentVariables(Str("LogDirectory", DefaultLogDir)),
             PolicyCachePath = Environment.ExpandEnvironmentVariables(Str("PolicyCachePath", DefaultPolicyPath)),
             TelemetryEnabled = Bool("TelemetryEnabled", false),
-            ServerUrl = Str("ServerUrl", ""),
+            ServerUrl = serverUrl,
             ApiToken = token ?? "",
             PolicyPollSeconds = Math.Max(15, Int("PolicyPollSeconds", 60)),
             LogRetentionDays = Math.Max(1, Int("LogRetentionDays", 30)),
             MaxScanBytes = Math.Max(10_000, Int("MaxScanBytes", 4_000_000)),
             RapidWindowSeconds = Int("RapidWindowSeconds", 10),
             RapidThreshold = Int("RapidThreshold", 30),
-            HighEntropyThreshold = Dbl("HighEntropyThreshold", 7.5)
+            HighEntropyThreshold = Dbl("HighEntropyThreshold", 7.5),
+            PolicySigningPublicKey = Str("PolicySigningPublicKey", "").Trim(),
+            EnrollmentCode = enrollCode?.Trim() ?? "",
+            CredentialPath = credentialPath,
+            DisplayName = Str("DisplayName", "")
         };
     }
 

@@ -16,6 +16,12 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 
 namespace OpenDLP.Agent;
 
+public static class AgentVersion
+{
+    public static string Value =>
+        typeof(AgentVersion).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+}
+
 internal static class Program
 {
     private static int Main(string[] args)
@@ -43,7 +49,7 @@ internal static class Program
         if (di >= 0 && di + 1 < args.Length)
             return DecryptFile(args[di + 1], config);
 
-        Console.WriteLine("OpenDLP Endpoint Agent v0.7.0 | GPLv3");
+        Console.WriteLine($"OpenDLP Endpoint Agent v{AgentVersion.Value} | GPLv3");
         Console.WriteLine("WARNING: Experimental MVP. Windows/.NET build and endpoint behavior have NOT yet been validated by the maintainers.");
         Console.WriteLine("Use only on an authorized test device. Do not rely on this agent as your only data-loss-prevention control.");
         Console.WriteLine($"Mode: {mode}\n");

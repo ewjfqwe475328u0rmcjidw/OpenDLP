@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>OpenDLP.Agent</AssemblyName>
     <RootNamespace>OpenDLP.Agent</RootNamespace>
-    <Version>0.8.0</Version>
+    <Version>0.10.0</Version>
     <Authors>OpenDLP Contributors</Authors>
     <Description>OpenDLP Windows endpoint agent (audit, content inspection, device control)</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
@@ -18,6 +18,7 @@
     <PackageReference Include="System.Management" Version="8.0.0" />
     <PackageReference Include="System.IO.Pipes.AccessControl" Version="8.0.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
   </ItemGroup>

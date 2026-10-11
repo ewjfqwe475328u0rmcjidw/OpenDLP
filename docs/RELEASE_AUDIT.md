@@ -1,4 +1,18 @@
-# OpenDLP v0.7.1 — Release audit
+# OpenDLP v0.10.0 — Release audit
+
+## Verification status (honest summary)
+
+| Area | Verified how | Status |
+|---|---|---|
+| Server API | 43 automated tests, run in this environment | ✅ passing |
+| Policy / default rules | server-side validation + tests | ✅ |
+| Docker image | Dockerfile written; built in CI | ⏳ CI |
+| Agent C# (12 files + tests) | syntax parsed; **not compiled** here (no .NET SDK available) | ⏳ CI on Windows runner |
+| Agent unit tests | written with test vectors cross-checked in Python | ⏳ CI |
+| Detection on a real Windows machine | — | ❌ needs community testers |
+| Service installer scripts | reviewed only | ❌ needs community testers |
+| OS-level blocking | not implemented beyond audit/alert | ❌ |
+
 
 > v0.7.1 update: server hardened (see CHANGELOG.md); 25 server tests pass. The .NET Agent still has **not** been compiled by the maintainers — CI (`.github/workflows/ci.yml`) will do the first Windows build once pushed to GitHub. The dashboard authentication limitation below is resolved in 0.7.1.
 

@@ -71,7 +71,9 @@ public sealed class AgentWorker : BackgroundService
             }
             else
             {
-                logger.Warn("AGENT", "Telemetry disabled or ServerUrl/ApiToken missing: running local-only with the cached/default policy");
+                logger.Warn("AGENT", _cfg.EnrollmentCode.Length > 0 && _cfg.ApiToken.Length == 0
+                    ? "Enrollment did not succeed yet: running local-only; will retry at next start"
+                    : "Telemetry disabled or ServerUrl/ApiToken missing: running local-only with the cached/default policy");
             }
 
             // Watchdog heartbeat + log retention

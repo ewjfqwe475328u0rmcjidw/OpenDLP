@@ -5,7 +5,7 @@ namespace OpenDLP.Watchdog;
 
 internal static class Program
 {
-    // 用法:
+    // Usage:
     // OpenDLP.Watchdog.exe --agent "C:\path\OpenDLP.Agent.exe" --heartbeat "%ProgramData%\OpenDLP\logs\agent.heartbeat"
     static async Task Main(string[] args)
     {
@@ -13,7 +13,7 @@ internal static class Program
         var heartbeat = Environment.ExpandEnvironmentVariables(
             GetArg(args, "--heartbeat") ?? "%ProgramData%\\OpenDLP\\logs\\agent.heartbeat");
         var staleSeconds = 15;
-        var graceSeconds = 10; // 重啟後給 agent 時間寫第一個 heartbeat
+        var graceSeconds = 10; // grace period after a restart so the agent can write its first heartbeat
         var procName = Path.GetFileNameWithoutExtension(agentPath);
 
         Console.WriteLine("OpenDLP Watchdog started");

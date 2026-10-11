@@ -13,16 +13,18 @@ public sealed class ServerClient : IDisposable
     private readonly string _base;
     private readonly string _agentId;
     private readonly byte[] _verifyKey;
+    private readonly ECDsa? _pubKey;
 
     public ServerClient(AgentConfig cfg)
     {
         _base = cfg.ServerUrl.TrimEnd('/');
         _agentId = cfg.AgentId;
         _verifyKey = cfg.PolicyVerifyKey();
+        _pubKey = PolicySignature.LoadPublicKey(cfg.PolicySigningPublicKey);
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         _http.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {cfg.ApiToken}");
         _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Agent-Id", cfg.AgentId);
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Agent-Version", "0.8.0");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Agent-Version", AgentVersion.Value);
     }
 
     /// <summary>Upload events from the durable on-disk outbox; the cursor only advances after the server accepted the batch.</summary>
@@ -134,11 +136,43 @@ public sealed class ServerClient : IDisposable
 
     private bool VerifySig(PolicyEnvelope env)
     {
-        var mac = HMACSHA256.HashData(_verifyKey, Encoding.UTF8.GetBytes(env.PolicyJson));
+        var data = Encoding.UTF8.GetBytes(env.PolicyJson);
+        var mac = HMACSHA256.HashData(_verifyKey, data);
         var expected = Convert.ToHexString(mac).ToLowerInvariant();
-        return CryptographicOperations.FixedTimeEquals(
+        var hmacOk = CryptographicOperations.FixedTimeEquals(
             Encoding.ASCII.GetBytes(expected), Encoding.ASCII.GetBytes(env.Sig.ToLowerInvariant()));
+        if (!hmacOk) return false;
+        // If a public key is configured, the asymmetric signature is mandatory.
+        return _pubKey == null || PolicySignature.Verify(_pubKey, data, env.PubSig);
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+        _pubKey?.Dispose();
+    }
+}
+
+/// <summary>ECDSA P-256 / SHA-256 policy signature helpers (DER signature, base64 in the envelope).</summary>
+public static class PolicySignature
+{
+    public static ECDsa? LoadPublicKey(string pem)
+    {
+        if (string.IsNullOrWhiteSpace(pem)) return null;
+        var key = ECDsa.Create();
+        key.ImportFromPem(pem);
+        return key;
+    }
+
+    public static bool Verify(ECDsa key, byte[] data, string? pubSigBase64)
+    {
+        if (string.IsNullOrWhiteSpace(pubSigBase64)) return false;
+        try
+        {
+            var sig = Convert.FromBase64String(pubSigBase64);
+            return key.VerifyData(data, sig, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3240DerSequence);
+        }
+        catch (FormatException) { return false; }
+        catch (CryptographicException) { return false; }
+    }
 }

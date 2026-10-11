@@ -60,6 +60,8 @@ public sealed class PolicyEnvelope
     public long Version { get; set; }
     public string PolicyJson { get; set; } = "";
     public string Sig { get; set; } = "";
+    /// <summary>Optional ECDSA P-256 signature (base64 DER) over PolicyJson; verified when the agent is configured with the server public key.</summary>
+    public string? PubSig { get; set; }
 }
 
 public sealed class PolicyStore

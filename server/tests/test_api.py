@@ -9,6 +9,12 @@ import main
 
 
 ADMIN = "admin-token-that-is-long-and-random-enough"
+VIEWER = "viewer-token-that-is-long-and-random-enough"
+ENROLL = "enroll-code-1234567890"
+
+
+def viewer():
+    return {"Authorization": f"Bearer {VIEWER}"}
 
 
 def admin():
@@ -26,6 +32,13 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "AGENT_TOKENS_PATH", "")
     monkeypatch.setattr(main, "DASHBOARD_PASSWORD", "dash-pass")
     monkeypatch.setattr(main, "DASHBOARD_INSECURE", False)
+    monkeypatch.setattr(main, "ENROLL_CODE", ENROLL)
+    monkeypatch.setattr(main, "VIEWER_TOKEN", VIEWER)
+    monkeypatch.setattr(main, "DASHBOARD_VIEWER_PASSWORD", "view-pass")
+    monkeypatch.setattr(main, "WEBHOOK_URL", "")
+    monkeypatch.setattr(main, "SMTP_HOST", "")
+    main._token_cache.clear()
+    main._notify_last.clear()
     main.POLICY_PATH.write_text(json.dumps({"rules": [], "usb": {"mode": "audit"}}, ensure_ascii=False), encoding="utf-8")
     main.init_db()
     return TestClient(main.app), token
@@ -292,3 +305,159 @@ def test_dashboard_filters(client):
     _seed(c, token)
     html = c.get("/", auth=("admin", "dash-pass"), params={"level": "ALERT"}).text
     assert "TW_ID" in html and "agent started" not in html
+
+
+def test_policy_asymmetric_signature(client, monkeypatch, tmp_path):
+    import base64
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    c, token = client
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = tmp_path / "sign.pem"
+    pem.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    monkeypatch.setattr(main, "SIGNING_KEY_PATH", str(pem))
+    env = c.get("/api/v1/policy?version=0", headers=headers(token)).json()
+    assert "pubSig" in env
+    key.public_key().verify(base64.b64decode(env["pubSig"]), env["policyJson"].encode(), ec.ECDSA(hashes.SHA256()))
+    # HMAC still present for older agents
+    assert env["sig"]
+
+
+def test_policy_without_signing_key_has_no_pubsig(client):
+    c, token = client
+    env = c.get("/api/v1/policy?version=0", headers=headers(token)).json()
+    assert "pubSig" not in env
+
+
+def test_policy_fails_closed_on_bad_signing_key(client, monkeypatch, tmp_path):
+    c, token = client
+    bad = tmp_path / "bad.pem"
+    bad.write_text("not a key")
+    monkeypatch.setattr(main, "SIGNING_KEY_PATH", str(bad))
+    assert c.get("/api/v1/policy?version=0", headers=headers(token)).status_code == 500
+
+
+# ---------------------------------------------------------------- enrollment
+
+def test_enroll_issues_per_agent_token_and_signs_policy(client):
+    c, shared = client
+    r = c.post("/api/v1/enroll", json={"agentId": "pc-01", "enrollmentCode": ENROLL, "host": "PC-01"})
+    assert r.status_code == 200
+    tok = r.json()["token"]
+    # issued token works; shared token does not work for an enrolled agent
+    env = c.get("/api/v1/policy?version=0", headers=headers(tok, "pc-01"))
+    assert env.status_code == 200
+    key = hashlib.sha256(tok.encode()).hexdigest().encode()
+    assert hmac.compare_digest(env.json()["sig"], hmac.new(key, env.json()["policyJson"].encode(), hashlib.sha256).hexdigest())
+    assert c.get("/api/v1/policy", headers=headers(shared, "pc-01")).status_code == 403
+    # token hash, not token, is stored
+    assert c.get("/api/v1/agents", headers=admin()).json()[0]["enrolled"] is True
+    assert "token" not in c.get("/api/v1/agents", headers=admin()).json()[0]
+
+
+def test_enroll_rejects_bad_code_and_disabled(client, monkeypatch):
+    c, _ = client
+    assert c.post("/api/v1/enroll", json={"agentId": "x", "enrollmentCode": "wrong"}).status_code == 403
+    monkeypatch.setattr(main, "ENROLL_CODE", "")
+    assert c.post("/api/v1/enroll", json={"agentId": "x", "enrollmentCode": ENROLL}).status_code == 503
+
+
+def test_reenroll_rotates_token(client):
+    c, _ = client
+    t1 = c.post("/api/v1/enroll", json={"agentId": "pc-02", "enrollmentCode": ENROLL}).json()["token"]
+    t2 = c.post("/api/v1/enroll", json={"agentId": "pc-02", "enrollmentCode": ENROLL}).json()["token"]
+    assert t1 != t2
+    assert c.get("/api/v1/policy", headers=headers(t1, "pc-02")).status_code == 403
+    assert c.get("/api/v1/policy?version=0", headers=headers(t2, "pc-02")).status_code == 200
+
+
+def test_revoke_and_unrevoke(client):
+    c, _ = client
+    tok = c.post("/api/v1/enroll", json={"agentId": "pc-03", "enrollmentCode": ENROLL}).json()["token"]
+    assert c.post("/api/v1/admin/agents/pc-03/revoke", headers=admin()).status_code == 200
+    assert c.get("/api/v1/policy?version=0", headers=headers(tok, "pc-03")).status_code == 403
+    assert c.post("/api/v1/enroll", json={"agentId": "pc-03", "enrollmentCode": ENROLL}).status_code == 403
+    assert c.get("/api/v1/agents", headers=admin()).json()[0]["status"] == "revoked"
+    assert c.post("/api/v1/admin/agents/pc-03/unrevoke", headers=admin()).status_code == 200
+    assert c.get("/api/v1/policy?version=0", headers=headers(tok, "pc-03")).status_code == 200
+    assert c.post("/api/v1/admin/agents/nope/revoke", headers=admin()).status_code == 404
+    assert c.post("/api/v1/admin/agents/pc-03/revoke", headers=viewer()).status_code == 403
+
+
+def test_enrolled_token_survives_restart_cache_loss(client):
+    c, _ = client
+    tok = c.post("/api/v1/enroll", json={"agentId": "pc-04", "enrollmentCode": ENROLL}).json()["token"]
+    main._token_cache.clear()  # simulate server restart
+    r = c.get("/api/v1/policy?version=0", headers=headers(tok, "pc-04"))
+    assert r.status_code == 200
+    key = hashlib.sha256(tok.encode()).hexdigest().encode()
+    assert hmac.compare_digest(r.json()["sig"], hmac.new(key, r.json()["policyJson"].encode(), hashlib.sha256).hexdigest())
+
+
+def test_telemetry_records_host_and_version(client):
+    c, token = client
+    h = {**headers(token), "X-Agent-Version": "0.10.0"}
+    c.post("/api/v1/telemetry", headers=h, json={"agentId": "agent-test", "events": [{"host": "DESKTOP-1", "message": "m"}]})
+    a = c.get("/api/v1/agents", headers=admin()).json()[0]
+    assert a["host"] == "DESKTOP-1" and a["agent_version"] == "0.10.0"
+
+
+# ---------------------------------------------------------------- roles
+
+def test_viewer_can_read_but_not_write(client):
+    c, token = client
+    _seed(c, token)
+    assert c.get("/api/v1/events", headers=viewer()).status_code == 200
+    assert c.get("/api/v1/stats", headers=viewer()).status_code == 200
+    assert c.get("/api/v1/admin/policy", headers=viewer()).status_code == 200
+    assert c.put("/api/v1/admin/policy", headers=viewer(), json={"rules": []}).status_code == 403
+    assert c.delete("/api/v1/admin/agents/agent-test", headers=viewer()).status_code == 403
+    assert c.delete("/api/v1/admin/agents/agent-test", headers=admin()).status_code == 200
+
+
+def test_dashboard_viewer_login(client):
+    c, _ = client
+    html = c.get("/", auth=("viewer", "view-pass")).text
+    assert "viewer" in html and "Critical alerts" in html
+    assert c.get("/", auth=("viewer", "wrong")).status_code == 401
+
+
+# ---------------------------------------------------------------- notifications
+
+def test_notifications_dispatch_high_alerts_only(client, monkeypatch):
+    c, token = client
+    sent = []
+    monkeypatch.setattr(main, "WEBHOOK_URL", "https://example.invalid/hook")
+    monkeypatch.setattr(main, "deliver_webhook", lambda url, body: sent.append(body))
+    orig = main.send_notifications
+
+    def sync(alerts):  # run inline instead of a thread so the test can assert
+        n = orig(alerts)
+        import time
+        for _ in range(50):
+            if len(sent) >= n:
+                break
+            time.sleep(0.02)
+        return n
+    monkeypatch.setattr(main, "send_notifications", sync)
+
+    c.post("/api/v1/telemetry", headers=headers(token), json={"agentId": "agent-test", "events": [
+        {"level": "ALERT", "eventType": "CONTENT", "message": "severity=critical rules=API-KEYx1"},
+        {"level": "ALERT", "eventType": "USB", "message": "severity=low removable drive"},
+        {"level": "INFO", "eventType": "START", "message": "severity=critical not an alert"},
+        {"level": "ALERT", "eventType": "CONTENT", "message": "severity=high duplicate within cooldown"}]})
+    assert len(sent) == 1
+    assert sent[0]["event_type"] == "CONTENT" and "CRITICAL" in sent[0]["text"]
+    r = c.post("/api/v1/admin/notify/test", headers=admin())
+    assert r.json()["webhook"] is True
+
+
+def test_notification_failure_does_not_break_ingestion(client, monkeypatch):
+    c, token = client
+    monkeypatch.setattr(main, "WEBHOOK_URL", "https://example.invalid/hook")
+    def boom(url, body): raise RuntimeError("down")
+    monkeypatch.setattr(main, "deliver_webhook", boom)
+    r = c.post("/api/v1/telemetry", headers=headers(token), json={"agentId": "agent-test", "events": [
+        {"level": "ALERT", "eventType": "X", "message": "severity=critical boom"}]})
+    assert r.status_code == 200 and r.json()["inserted"] == 1
