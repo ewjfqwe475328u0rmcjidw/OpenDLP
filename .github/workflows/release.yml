@@ -15,16 +15,15 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Unit tests
         run: dotnet test agent.tests/OpenDLP.Agent.Tests.csproj -c Release
-      - name: Publish agent
-        run: dotnet publish agent/OpenDLP.Agent.csproj -c Release -r win-x64 --self-contained false -o out/agent
-      - name: Publish watchdog
-        run: dotnet publish watchdog/OpenDLP.Watchdog.csproj -c Release -r win-x64 --self-contained false -o out/watchdog
+      - name: Publish agent + watchdog (same layout the service E2E test installs)
+        run: |
+          dotnet publish agent/OpenDLP.Agent.csproj -c Release -r win-x64 --self-contained false -o out/agent
+          dotnet publish watchdog/OpenDLP.Watchdog.csproj -c Release -r win-x64 --self-contained false -o out/agent
       - name: Bundle
         shell: pwsh
         run: |
-          Copy-Item agent/agent.config.example.json,agent/install-service.ps1,agent/uninstall-service.ps1 out/agent/
-          Copy-Item out/watchdog/OpenDLP.Watchdog.exe,out/watchdog/OpenDLP.Watchdog.dll,out/watchdog/OpenDLP.Watchdog.runtimeconfig.json out/agent/ -ErrorAction SilentlyContinue
-          Copy-Item README.md,LICENSE,SECURITY.md out/
+          Copy-Item agent/agent.config.example.json, agent/install-service.ps1, agent/uninstall-service.ps1 out/agent/
+          Copy-Item README.md, LICENSE, SECURITY.md, CHANGELOG.md out/
           Compress-Archive -Path out/* -DestinationPath OpenDLP-windows-${{ github.ref_name }}.zip
       - name: Checksums
         shell: pwsh
@@ -36,5 +35,7 @@ jobs:
             SHA256SUMS.txt
           prerelease: true
           body: |
-            **Experimental, unsigned build — not yet verified on real Windows hardware.**
-            Test only on a disposable, authorized machine. See the README, SECURITY.md and CHANGELOG.md.
+            Windows agent + watchdog (requires the .NET 8 Desktop Runtime). Unsigned build.
+            Verified automatically on clean Windows VMs: build, unit tests, console and service-mode end-to-end tests.
+            USB devices and the interactive clipboard are not covered by automation yet - please report results with the "Windows test report" issue template.
+            Install: extract, open the `agent` folder in an elevated PowerShell, run `.\install-service.ps1 -ServerUrl https://your-server -EnrollmentCode "..." -WithWatchdog`.
