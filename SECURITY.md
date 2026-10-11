@@ -1,4 +1,4 @@
-# Security Policy & Threat Model (OpenDLP v0.7.0)
+# Security Policy & Threat Model (OpenDLP v0.7.1)
 
 ## 1. Product scope
 
@@ -13,7 +13,8 @@ It is **not** a kernel-level DLP and must not be relied on to guarantee blocking
 | Agent host | Local administrator may be able to tamper with or disable the agent |
 | Local log key | Derived from AgentId + API token; demo-grade, not KMS/DPAPI |
 | Network path | Use HTTPS in production; local sample may use HTTP |
-| Server token | Shared static bearer token from `OPENDLP_TOKEN`; not per-agent identity |
+| Agent token | Shared bearer token from `OPENDLP_TOKEN`, or optional per-agent tokens via `OPENDLP_AGENT_TOKENS` |
+| Admin token | Separate `OPENDLP_ADMIN_TOKEN` for reading events and the agent list |
 | Policy signature | HMAC-SHA256 with a key derived from the shared token; not asymmetric signing |
 | SQLite DB | Access control depends on OS file permissions |
 
@@ -34,10 +35,10 @@ It is **not** a kernel-level DLP and must not be relied on to guarantee blocking
 - Does not install or manage a Windows Service. Test the command-line mode and restart behavior separately.
 
 ### Server
-- Shared bearer token only; no mTLS, per-agent credentials, rate limiting, or built-in dashboard authentication.
-- The dashboard is unauthenticated. Bind to localhost or put it behind an authenticated reverse proxy; never expose it directly to the public internet.
-- SQLite event retention/cleanup is not implemented.
-- Set `OPENDLP_TOKEN`; if unset, API authentication fails closed.
+- Bearer tokens only (shared, or optional per-agent); no mTLS and no rate limiting.
+- The dashboard uses a single HTTP Basic password (`OPENDLP_DASHBOARD_PASSWORD`) and is disabled when unset. Put it behind HTTPS (e.g. a reverse proxy); never expose it over plain HTTP to the public internet.
+- Event retention is a simple age-based purge at startup (`OPENDLP_RETENTION_DAYS`, default 90).
+- If `OPENDLP_TOKEN` / `OPENDLP_ADMIN_TOKEN` are unset or shorter than 32 bytes, the related endpoints fail closed.
 
 ## 4. Privacy
 
@@ -46,7 +47,7 @@ Events can contain full file paths, filenames, user names, or snippets of event 
 ## 5. Before production use
 
 1. Use HTTPS and protect/rotate tokens.
-2. Add dashboard authentication, authorization, audit logging, rate limits, and server-side retention.
+2. Add SSO/role-based authorization for the dashboard, audit logging, and rate limits.
 3. Build and test on a clean Windows 10/11 host with .NET 8; test service lifecycle, helper IPC ACLs, clipboard permissions, removable media, and failure recovery.
 4. Code-sign binaries and define a secure update process.
 5. Validate policy behavior and verify that any claimed blocking is enforced at the OS level.
