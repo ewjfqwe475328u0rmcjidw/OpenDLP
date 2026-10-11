@@ -166,3 +166,5 @@ Write-Output "ok: clean uninstall"
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "SERVICE E2E PASSED"
 "## OpenDLP service-mode test passed`n`n- Deploy-OpenDLP.ps1: checksum enforced, idempotent re-run`n- install-service.ps1 with self-enrollment and watchdog`n- Windows service runs as SYSTEM and applies signed policy`n- detection inside .docx and .xlsx`n- recovery after the agent process is killed`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+# The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
+exit 0

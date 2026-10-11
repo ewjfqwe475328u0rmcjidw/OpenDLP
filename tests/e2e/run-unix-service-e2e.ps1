@@ -112,3 +112,5 @@ Write-Host "ok: clean uninstall"
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "UNIX SERVICE E2E PASSED"
 "## OpenDLP $(if ($isMac) {'macOS'} else {'Linux'}) service test passed`n`n- deploy-opendlp.sh: checksum enforced, idempotent re-run`n- install.sh with self-enrollment`n- root-only token and config (0600)`n- signed policy, content detection with masking`n- restart by $(if ($isMac) {'launchd'} else {'systemd'}) after crash`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+# The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
+exit 0

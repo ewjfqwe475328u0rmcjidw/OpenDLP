@@ -88,7 +88,8 @@ function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
 # 1. enrollment
 $a = Wait-Until { (Invoke-RestMethod "$base/api/v1/agents" -Headers $H) | ForEach-Object { $_ } | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "agent enrolled"
 $cred = Join-Path $work "credentials.bin"
-if (-not (Test-Path $cred)) { Fail "credential file was not written" }
+# the server records the enrollment slightly before the agent has persisted its token
+Wait-Until { Test-Path $cred } 20 "credential file written" | Out-Null
 if ($IsWindows) {
     $raw = [IO.File]::ReadAllText($cred)
     if ($raw -match '[A-Za-z0-9_-]{40,}') { Fail "credential file looks like plaintext (DPAPI not applied)" }
@@ -127,3 +128,5 @@ Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "E2E PASSED"
 "## OpenDLP end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+# The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
+exit 0
