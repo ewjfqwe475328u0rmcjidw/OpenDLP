@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenDLP Dashboard</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 24px; background: #0b1220; color: #e5eefc; }
+    h1,h2 { margin: 0 0 12px; }
+    .card { background: #121a2b; border: 1px solid #243049; border-radius: 12px; padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #243049; padding: 8px; text-align: left; vertical-align: top; font-size: 14px; }
+    .alert { color: #ff7b7b; }
+    .warn { color: #ffd36e; }
+    .muted { color: #93a4c3; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>OpenDLP Central Dashboard</h1>
+  <p class="muted">UTC: {{ now }}</p>
+
+  <div class="card">
+    <h2>Agents</h2>
+    <table>
+      <tr><th>Agent</th><th>Last Seen</th><th>Last Event</th></tr>
+      {% for a in agents %}
+      <tr>
+        <td>{{ a["agent_id"] }}</td>
+        <td>{{ a["last_seen"] }}</td>
+        <td>{{ a["last_event"] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">No agents yet</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Recent Events</h2>
+    <table>
+      <tr><th>Time</th><th>Agent</th><th>Level</th><th>Type</th><th>Message</th></tr>
+      {% for e in events %}
+      <tr>
+        <td>{{ e["ts"] }}</td>
+        <td>{{ e["agent_id"] }}</td>
+        <td class="{% if e['level']=='ALERT' %}alert{% elif e['level']=='WARN' %}warn{% endif %}">{{ e["level"] }}</td>
+        <td>{{ e["event_type"] }}</td>
+        <td>{{ e["message"] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No events</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</body>
+</html>

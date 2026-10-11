@@ -1,0 +1,13 @@
+{
+  "rules": [
+    { "id": "TW-NID", "name": "Taiwan National ID", "type": "builtin", "detector": "tw_national_id", "minMatches": 1, "severity": "high", "action": "alert" },
+    { "id": "CREDIT-CARD", "name": "Credit card number", "type": "builtin", "detector": "credit_card", "minMatches": 1, "severity": "high", "action": "alert" },
+    { "id": "TW-MOBILE-BULK", "name": "Bulk Taiwan mobile numbers", "type": "builtin", "detector": "tw_mobile", "minMatches": 5, "severity": "medium", "action": "log" },
+    { "id": "EMAIL-BULK", "name": "Bulk email addresses", "type": "builtin", "detector": "email", "minMatches": 20, "severity": "medium", "action": "log" },
+    { "id": "KW-CONFIDENTIAL", "name": "Confidential markers", "type": "keywords", "keywords": ["機密", "confidential", "內部使用", "internal use only", "限閱"], "minMatches": 1, "severity": "medium", "action": "alert" }
+  ],
+  "usb": { "mode": "audit", "allowSerials": [] },
+  "clipboard": { "enabled": true, "action": "alert" },
+  "print": { "enabled": true },
+  "browser": { "mode": "audit", "blockedUploadDomains": [] }
+}

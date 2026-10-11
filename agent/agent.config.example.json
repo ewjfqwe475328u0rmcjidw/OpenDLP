@@ -1,0 +1,19 @@
+{
+  "AgentId": "PC-DEMO-001",
+  "SensitivePaths": [
+    "{AllUsers}\\Desktop",
+    "{AllUsers}\\Documents",
+    "{AllUsers}\\Downloads"
+  ],
+  "LogDirectory": "%ProgramData%\\OpenDLP\\logs",
+  "PolicyCachePath": "%ProgramData%\\OpenDLP\\policy\\policy.json",
+  "TelemetryEnabled": false,
+  "ServerUrl": "",
+  "ApiToken": "",
+  "PolicyPollSeconds": 60,
+  "LogRetentionDays": 30,
+  "MaxScanBytes": 4000000,
+  "RapidWindowSeconds": 10,
+  "RapidThreshold": 30,
+  "HighEntropyThreshold": 7.5
+}
