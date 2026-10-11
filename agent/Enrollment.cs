@@ -7,13 +7,13 @@ using System.Text.Json;
 namespace OpenDLP.Agent;
 
 /// <summary>
-/// Self-enrollment: exchange a one-time enrollment code for a per-machine token, and keep that token
-/// encrypted at rest with DPAPI (machine scope) so it never has to be written into agent.config.json.
+/// Self-enrollment: exchange a one-time enrollment code for a per-machine token and keep it out of agent.config.json.
+/// Windows: encrypted at rest with DPAPI (machine scope). macOS/Linux: a file readable only by root (mode 0600)
+/// inside the root-owned data folder.
 /// </summary>
 public static class Enrollment
 {
-    public static string DefaultCredentialPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OpenDLP", "credentials.bin");
+    public static string DefaultCredentialPath => Path.Combine(AgentConfig.DataRoot, "credentials.bin");
 
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("OpenDLP-credentials-v1");
 
@@ -22,8 +22,11 @@ public static class Enrollment
         try
         {
             if (!File.Exists(path)) return null;
-            var plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.LocalMachine);
-            var token = Encoding.UTF8.GetString(plain);
+            var raw = File.ReadAllBytes(path);
+            var plain = OperatingSystem.IsWindows()
+                ? ProtectedData.Unprotect(raw, Entropy, DataProtectionScope.LocalMachine)
+                : raw;
+            var token = Encoding.UTF8.GetString(plain).Trim();
             return string.IsNullOrWhiteSpace(token) ? null : token;
         }
         catch
@@ -36,9 +39,17 @@ public static class Enrollment
     {
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        var cipher = ProtectedData.Protect(Encoding.UTF8.GetBytes(token), Entropy, DataProtectionScope.LocalMachine);
         var tmp = path + ".tmp";
-        File.WriteAllBytes(tmp, cipher);
+        if (OperatingSystem.IsWindows())
+        {
+            File.WriteAllBytes(tmp, ProtectedData.Protect(Encoding.UTF8.GetBytes(token), Entropy, DataProtectionScope.LocalMachine));
+        }
+        else
+        {
+            File.WriteAllBytes(tmp, Array.Empty<byte>());
+            File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);   // 0600 before any secret is written
+            File.WriteAllBytes(tmp, Encoding.UTF8.GetBytes(token));
+        }
         File.Move(tmp, path, overwrite: true);
     }
 

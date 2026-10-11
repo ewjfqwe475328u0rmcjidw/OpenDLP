@@ -7,11 +7,16 @@ namespace OpenDLP.Agent;
 
 public sealed class AgentConfig
 {
-    public static string DefaultLogDir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OpenDLP", "logs");
+    /// <summary>Machine-wide data folder: %ProgramData%\OpenDLP on Windows, /Library/Application Support/OpenDLP on macOS.</summary>
+    public static string DataRoot => OperatingSystem.IsMacOS()
+        ? "/Library/Application Support/OpenDLP"
+        : OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OpenDLP")
+            : "/var/lib/opendlp";
 
-    public static string DefaultPolicyPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OpenDLP", "policy", "policy.json");
+    public static string DefaultLogDir => Path.Combine(DataRoot, "logs");
+
+    public static string DefaultPolicyPath => Path.Combine(DataRoot, "policy", "policy.json");
 
     public string AgentId { get; init; } = Environment.MachineName;
     public string[] SensitivePaths { get; init; } = Array.Empty<string>();
@@ -115,6 +120,8 @@ public sealed class AgentConfig
     private static IEnumerable<string> ExpandPath(string raw)
     {
         var s = Environment.ExpandEnvironmentVariables(raw);
+        if (s.StartsWith("~/", StringComparison.Ordinal))
+            s = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), s[2..]);
         const string token = "{AllUsers}";
         if (!s.Contains(token, StringComparison.OrdinalIgnoreCase))
         {
@@ -122,14 +129,19 @@ public sealed class AgentConfig
             yield break;
         }
 
-        var usersRoot = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\", "Users");
+        var usersRoot = OperatingSystem.IsWindows()
+            ? Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\", "Users")
+            : OperatingSystem.IsMacOS() ? "/Users" : "/home";
         if (!Directory.Exists(usersRoot)) yield break;
 
         foreach (var dir in Directory.GetDirectories(usersRoot))
         {
             var name = Path.GetFileName(dir);
-            if (name is "Public" or "Default" or "Default User" or "All Users") continue;
-            yield return s.Replace(token, dir, StringComparison.OrdinalIgnoreCase);
+            if (name is "Public" or "Default" or "Default User" or "All Users" or "Shared" || name.StartsWith('.')) continue;
+            // Normalise separators so "{AllUsers}\\Desktop" in a Windows-style config also works on macOS.
+            var expanded = s.Replace(token, dir, StringComparison.OrdinalIgnoreCase);
+            if (!OperatingSystem.IsWindows()) expanded = expanded.Replace('\\', '/');
+            yield return expanded;
         }
     }
 

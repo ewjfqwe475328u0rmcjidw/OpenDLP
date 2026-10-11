@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- macOS / Linux agent. Shares the detection core with the Windows agent (linked sources below). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>opendlp-agent</AssemblyName>
+    <RootNamespace>OpenDLP.Agent</RootNamespace>
+    <Version>0.11.0</Version>
+    <Authors>OpenDLP Contributors</Authors>
+    <Description>OpenDLP endpoint agent for macOS and Linux (file monitoring, content inspection, removable volumes)</Description>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\agent\AgentConfig.cs" Link="shared\AgentConfig.cs" />
+    <Compile Include="..\agent\AgentVersion.cs" Link="shared\AgentVersion.cs" />
+    <Compile Include="..\agent\Enrollment.cs" Link="shared\Enrollment.cs" />
+    <Compile Include="..\agent\FileMonitor.cs" Link="shared\FileMonitor.cs" />
+    <Compile Include="..\agent\Heuristics.cs" Link="shared\Heuristics.cs" />
+    <Compile Include="..\agent\Logging.cs" Link="shared\Logging.cs" />
+    <Compile Include="..\agent\Policy.cs" Link="shared\Policy.cs" />
+    <Compile Include="..\agent\Scanner.cs" Link="shared\Scanner.cs" />
+    <Compile Include="..\agent\Telemetry.cs" Link="shared\Telemetry.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\policies\default-policy.json" Link="policy.default.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

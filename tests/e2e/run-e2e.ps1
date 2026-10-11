@@ -8,11 +8,12 @@ End-to-end test on a clean Windows machine (used by CI on GitHub's windows-lates
 Every failure is printed as a GitHub annotation together with the tail of the agent and server logs.
 #>
 param([string]$AgentExe = "agent/bin/Release/net8.0-windows/OpenDLP.Agent.exe")
+# Cross-platform: the same test drives the Windows agent and the macOS/Linux agent (agent-unix).
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path ".").Path
 $work = Join-Path $env:RUNNER_TEMP "opendlp-e2e"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path "$work\watch", "$work\logs", "$work\policy" | Out-Null
+foreach ($d in "watch", "logs", "policy") { New-Item -ItemType Directory -Force -Path (Join-Path $work $d) | Out-Null }
 
 function New-Secret { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ }) }
 $admin = New-Secret
@@ -20,8 +21,8 @@ $enroll = New-Secret
 $port = 8765
 $base = "http://127.0.0.1:$port"
 $agentId = "e2e-agent-01"
-$serverLog = "$work\server.log"
-$agentLog = "$work\agent.log"
+$serverLog = (Join-Path $work "server.log")
+$agentLog = (Join-Path $work "agent.log")
 
 function Fail([string]$msg) {
     Write-Output "::error::E2E: $msg"
@@ -41,10 +42,10 @@ function Fail([string]$msg) {
 $env:OPENDLP_TOKEN = New-Secret
 $env:OPENDLP_ADMIN_TOKEN = $admin
 $env:OPENDLP_ENROLL_CODE = $enroll
-$env:OPENDLP_DB = "$work\opendlp.db"
+$env:OPENDLP_DB = (Join-Path $work "opendlp.db")
 $env:OPENDLP_DASHBOARD_PASSWORD = "e2e-dashboard"
 $server = Start-Process -FilePath python -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port $port" `
-    -WorkingDirectory "$root\server" -RedirectStandardOutput $serverLog -RedirectStandardError "$serverLog.err" -PassThru -NoNewWindow
+    -WorkingDirectory (Join-Path $root "server") -RedirectStandardOutput $serverLog -RedirectStandardError "$serverLog.err" -PassThru -NoNewWindow
 $ok = $false
 for ($i = 0; $i -lt 30; $i++) {
     try { if ((Invoke-RestMethod "$base/health").status -eq "ok") { $ok = $true; break } } catch { }
@@ -59,8 +60,8 @@ $exe = Join-Path $root $AgentExe
 if (-not (Test-Path $exe)) { Fail "agent executable not found at $exe" }
 $cfg = [ordered]@{
     AgentId = $agentId; DisplayName = "E2E runner"; ServerUrl = $base; EnrollmentCode = $enroll; ApiToken = ""
-    SensitivePaths = @("$work\watch"); LogDirectory = "$work\logs"; PolicyCachePath = "$work\policy\policy.json"
-    CredentialPath = "$work\credentials.bin"; TelemetryEnabled = $true; PolicyPollSeconds = 15
+    SensitivePaths = @((Join-Path $work "watch")); LogDirectory = (Join-Path $work "logs"); PolicyCachePath = (Join-Path $work "policy/policy.json")
+    CredentialPath = (Join-Path $work "credentials.bin"); TelemetryEnabled = $true; PolicyPollSeconds = 15
 }
 $cfg | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path (Split-Path $exe) "agent.config.json")
 Remove-Item Env:OPENDLP_TOKEN   # the agent must not see the shared token; it has to enroll
@@ -78,9 +79,15 @@ function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
 
 # 1. enrollment
 $a = Wait-Until { (Invoke-RestMethod "$base/api/v1/agents" -Headers $H) | ForEach-Object { $_ } | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "agent enrolled"
-if (-not (Test-Path "$work\credentials.bin")) { Fail "DPAPI credential file was not written" }
-$raw = [IO.File]::ReadAllText("$work\credentials.bin")
-if ($raw -match '[A-Za-z0-9_-]{40,}') { Fail "credential file looks like plaintext" }
+$cred = Join-Path $work "credentials.bin"
+if (-not (Test-Path $cred)) { Fail "credential file was not written" }
+if ($IsWindows) {
+    $raw = [IO.File]::ReadAllText($cred)
+    if ($raw -match '[A-Za-z0-9_-]{40,}') { Fail "credential file looks like plaintext (DPAPI not applied)" }
+} else {
+    $mode = (Get-Item $cred).UnixMode
+    if ($mode -ne "-rw-------") { Fail "credential file mode is $mode, expected -rw-------" }
+}
 
 # 2. policy applied (HMAC verified) and telemetry flowing
 Wait-Until { (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=POLICY_UPDATED" -Headers $H).Count -ge 1 } 90 "signed policy applied and reported" | Out-Null
@@ -88,7 +95,7 @@ Wait-Until { (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_typ
 # 3. content detection
 Start-Sleep 3
 $content = "Customer record`r`nNational ID: A123456789`r`nCard: 4111 1111 1111 1111`r`nCONFIDENTIAL"
-Set-Content -Path "$work\watch\customers.txt" -Value $content -Encoding UTF8
+Set-Content -Path (Join-Path $work "watch/customers.txt") -Value $content -Encoding UTF8
 $hit = Wait-Until {
     (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=CONTENT_MATCH" -Headers $H) | Select-Object -First 1
 } 90 "CONTENT_MATCH event received by server"
@@ -102,7 +109,7 @@ Write-Output "detected: $($hit.message)"
 # 4. revocation
 Invoke-RestMethod -Method Post "$base/api/v1/admin/agents/$agentId/revoke" -Headers $H | Out-Null
 $before = (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&limit=500" -Headers $H).Count
-Set-Content -Path "$work\watch\after-revoke.txt" -Value "A123456789" -Encoding UTF8
+Set-Content -Path (Join-Path $work "watch/after-revoke.txt") -Value "A123456789" -Encoding UTF8
 Start-Sleep 20
 $after = (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&limit=500" -Headers $H).Count
 if ($after -gt $before) { Fail "revoked agent could still upload events ($before -> $after)" }
@@ -111,4 +118,4 @@ Write-Output "ok: revoked agent is rejected"
 Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "E2E PASSED"
-"## OpenDLP end-to-end test passed`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## OpenDLP end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY

@@ -683,6 +683,67 @@ def export_events_csv(
     )
 
 
+def event_timeseries(hours: int = 24, level: str | None = None, bucket: str = "hour") -> list[dict[str, Any]]:
+    """Event counts per hour (or day) over the window, zero-filled, oldest first. Uses server receive time."""
+    now = datetime.now(timezone.utc)
+    if bucket == "day":
+        start = (now - timedelta(days=max(1, hours // 24) - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        width, step, fmt = 10, timedelta(days=1), "%Y-%m-%d"
+    else:
+        start = (now - timedelta(hours=hours - 1)).replace(minute=0, second=0, microsecond=0)
+        width, step, fmt = 13, timedelta(hours=1), "%Y-%m-%dT%H"
+    sql = f"SELECT substr(received_at, 1, {width}) AS b, COUNT(*) AS n FROM events WHERE received_at >= ?"
+    params: list[Any] = [start.isoformat()]
+    if level:
+        sql += " AND level = ?"
+        params.append(level.upper())
+    sql += " GROUP BY b"
+    with _db_lock:
+        conn = db()
+        try:
+            counts = {r["b"]: r["n"] for r in conn.execute(sql, params)}
+        finally:
+            conn.close()
+    out = []
+    t = start
+    while t <= now:
+        key = t.strftime(fmt)
+        out.append({"bucket": key, "count": counts.get(key, 0)})
+        t += step
+    return out
+
+
+@app.get("/api/v1/stats/timeseries")
+def stats_timeseries(
+    hours: int = 24, level: str | None = None, bucket: str = "hour", _role: str = Depends(viewer_auth)
+) -> list[dict[str, Any]]:
+    hours = max(1, min(hours, 24 * 90))
+    return event_timeseries(hours, level, "day" if bucket == "day" else "hour")
+
+
+def _bar_chart(series: list[dict[str, Any]], label_every: int, label_fmt) -> dict[str, Any]:
+    """Pre-compute bar geometry for the dashboard's server-rendered SVG chart."""
+    width, height, left, bottom, top = 720, 160, 32, 22, 8
+    n = max(1, len(series))
+    peak = max([p["count"] for p in series] + [1])
+    plot_w, plot_h = width - left - 8, height - bottom - top
+    slot = plot_w / n
+    bar_w = max(2.0, slot - 2)  # 2px gap between bars
+    bars = []
+    for i, p in enumerate(series):
+        h = 0 if p["count"] == 0 else max(2.0, plot_h * p["count"] / peak)
+        x = left + i * slot + 1
+        bars.append({
+            "x": round(x, 1), "y": round(top + plot_h - h, 1), "w": round(bar_w, 1), "h": round(h, 1),
+            "slot_x": round(left + i * slot, 1), "slot_w": round(slot, 1),
+            "count": p["count"], "label": label_fmt(p["bucket"]),
+            "tick": i % label_every == 0 or i == n - 1,
+        })
+    return {"width": width, "height": height, "left": left, "top": top, "base": top + plot_h,
+            "mid": top + plot_h / 2, "peak": peak, "half": peak / 2, "bars": bars,
+            "total": sum(p["count"] for p in series)}
+
+
 @app.get("/api/v1/stats")
 def stats(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
@@ -861,6 +922,8 @@ def dashboard(
 ) -> HTMLResponse:
     agents = query_agents()
     events = query_events(100, agent_id or None, level or None, None, None, q or None)
+    alerts_24h = _bar_chart(event_timeseries(24, "ALERT"), 6, lambda b: b[-2:] + ":00")
+    events_7d = _bar_chart(event_timeseries(24 * 7, None, "day"), 1, lambda b: b[5:])
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     sev = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     for e in query_events(5000, None, "ALERT", None, since, None):
@@ -878,6 +941,10 @@ def dashboard(
             "online": sum(1 for a in agents if a["status"] == "online"),
             "role": role,
             "sev": sev,
+            "charts": [
+                {"id": "alerts24", "title": "Alerts per hour", "sub": "last 24 hours, UTC", "c": alerts_24h},
+                {"id": "events7", "title": "Events per day", "sub": "last 7 days, UTC", "c": events_7d},
+            ],
         },
     )
 

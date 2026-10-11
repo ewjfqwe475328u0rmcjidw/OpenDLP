@@ -47,12 +47,44 @@ jobs:
       - name: Publish release layout
         shell: pwsh
         run: |
-          ./tools/ci/run.ps1 "dotnet publish agent/OpenDLP.Agent.csproj -c Release -r win-x64 --self-contained false -o out/agent"
-          ./tools/ci/run.ps1 "dotnet publish watchdog/OpenDLP.Watchdog.csproj -c Release -r win-x64 --self-contained false -o out/agent"
+          ./tools/ci/run.ps1 "dotnet publish agent/OpenDLP.Agent.csproj -c Release -r win-x64 --self-contained true -o out/agent"
+          ./tools/ci/run.ps1 "dotnet publish watchdog/OpenDLP.Watchdog.csproj -c Release -r win-x64 --self-contained true -o out/agent"
           Copy-Item agent/agent.config.example.json, agent/install-service.ps1, agent/uninstall-service.ps1 out/agent/
       - name: Service-mode end-to-end test (install, Office files, print, self-healing, uninstall)
         shell: pwsh
         run: ./tests/e2e/run-service-e2e.ps1 -Publish out/agent
+
+  agent-unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RID: ${{ runner.os == 'macOS' && 'osx-arm64' || 'linux-x64' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r server/requirements.txt
+      - name: Build agent (macOS / Linux)
+        shell: pwsh
+        run: ./tools/ci/run.ps1 "dotnet build agent-unix/OpenDLP.Agent.Unix.csproj -c Release"
+      - name: End-to-end test (console)
+        shell: pwsh
+        run: ./tests/e2e/run-e2e.ps1 -AgentExe agent-unix/bin/Release/net8.0/opendlp-agent
+      - name: Publish release layout
+        shell: pwsh
+        run: |
+          ./tools/ci/run.ps1 "dotnet publish agent-unix/OpenDLP.Agent.Unix.csproj -c Release -r $env:RID --self-contained true -p:PublishSingleFile=true -o out/unix"
+          Copy-Item agent-unix/install.sh, agent-unix/uninstall.sh out/unix/
+      - name: Service-mode end-to-end test (install.sh, launchd/systemd restart, uninstall)
+        shell: pwsh
+        run: ./tests/e2e/run-unix-service-e2e.ps1 -Publish out/unix
 
   docker:
     runs-on: ubuntu-latest

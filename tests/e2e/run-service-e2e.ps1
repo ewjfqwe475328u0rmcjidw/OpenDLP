@@ -3,7 +3,7 @@ Service-mode end-to-end test on a clean Windows VM (GitHub windows-latest runner
  1. publish agent + watchdog like the release zip, install with install-service.ps1 (enrollment, watchdog)
  2. verify the Windows service runs, enrolls and receives the signed policy
  3. verify detection inside .docx and .xlsx files
- 4. print to a silent PDF printer and look for a PRINT_JOB event (soft check: WMI polling can miss short jobs)
+ 4. print to a silent PDF printer and verify a PRINT_JOB event (PrintService event log)
  5. kill the agent process and verify it comes back (SCM recovery / watchdog) and keeps reporting
  6. uninstall and verify nothing is left behind
 #>
@@ -105,19 +105,21 @@ foreach ($r in "PASSPORT", "IBAN") { if ($docHit.message -notmatch $r) { Fail ".
 $xlsHit = Wait-Until { Events "CONTENT_MATCH" | Where-Object { $_.message -match 'customers\.xlsx' } | Select-Object -First 1 } 90 ".xlsx content detected"
 foreach ($r in "US-SSN", "CREDIT-CARD") { if ($xlsHit.message -notmatch $r) { Fail ".xlsx hit is missing rule $r : $($xlsHit.message)" } }
 
-# ---------- printing (soft check) ----------
+# ---------- printing ----------
+$printerReady = $false
 try {
     $pdf = "$work\print-test.pdf"
     Add-PrinterPort -Name $pdf -ErrorAction Stop
     Add-Printer -Name "OpenDLP E2E PDF" -DriverName "Microsoft Print To PDF" -PortName $pdf -ErrorAction Stop
+    $printerReady = $true
+} catch {
+    Write-Output "::warning::SERVICE-E2E: could not create a test printer on this runner, print check skipped: $($_.Exception.Message)"
+}
+if ($printerReady) {
     Start-Sleep 3
     1..40 | ForEach-Object { "OpenDLP print monitor test line $_" } | Out-Printer -Name "OpenDLP E2E PDF"
-    $printed = $false
-    for ($i = 0; $i -lt 30; $i++) { if ((Events "PRINT_JOB").Count -ge 1) { $printed = $true; break }; Start-Sleep 1 }
-    if ($printed) { Write-Output "ok: PRINT_JOB event received" }
-    else { Write-Output "::warning::SERVICE-E2E: no PRINT_JOB event observed (short print jobs can be missed by WMI polling; known limitation)" }
-} catch {
-    Write-Output "::warning::SERVICE-E2E: print test skipped: $($_.Exception.Message)"
+    $job = Wait-Until { Events "PRINT_JOB" | Where-Object { $_.message -match 'OpenDLP E2E PDF' } | Select-Object -First 1 } 60 "PRINT_JOB event received"
+    Write-Host "print event: $($job.message)"
 }
 
 # ---------- self-healing ----------

@@ -461,3 +461,36 @@ def test_notification_failure_does_not_break_ingestion(client, monkeypatch):
     r = c.post("/api/v1/telemetry", headers=headers(token), json={"agentId": "agent-test", "events": [
         {"level": "ALERT", "eventType": "X", "message": "severity=critical boom"}]})
     assert r.status_code == 200 and r.json()["inserted"] == 1
+
+
+# ---------------------------------------------------------------- charts
+
+def test_timeseries_hourly_and_daily(client):
+    c, token = client
+    _seed(c, token)
+    hourly = c.get("/api/v1/stats/timeseries", headers=viewer(), params={"hours": 24}).json()
+    assert len(hourly) == 24 and hourly[-1]["count"] == 3 and sum(p["count"] for p in hourly) == 3
+    alerts = c.get("/api/v1/stats/timeseries", headers=viewer(), params={"hours": 24, "level": "ALERT"}).json()
+    assert alerts[-1]["count"] == 1
+    daily = c.get("/api/v1/stats/timeseries", headers=admin(), params={"hours": 168, "bucket": "day"}).json()
+    assert len(daily) == 7 and daily[-1]["count"] == 3
+    assert c.get("/api/v1/stats/timeseries", headers=headers(token)).status_code == 403
+
+
+def test_dashboard_renders_charts(client):
+    c, token = client
+    _seed(c, token)
+    html = c.get("/", auth=("admin", "dash-pass")).text
+    assert "Alerts per hour" in html and "Events per day" in html
+    assert html.count('class="bar"') >= 2   # at least one alert bar and one event bar
+    assert "Show as table" in html
+
+
+def test_bar_chart_geometry():
+    series = [{"bucket": f"2026-01-01T{h:02d}", "count": n} for h, n in enumerate([0, 5, 10])]
+    ch = main._bar_chart(series, 1, lambda b: b[-2:])
+    assert ch["peak"] == 10 and ch["total"] == 15
+    tallest = ch["bars"][2]
+    assert tallest["y"] == ch["top"] and tallest["h"] == ch["base"] - ch["top"]
+    assert ch["bars"][0]["h"] == 0
+    assert ch["bars"][1]["x"] + ch["bars"][1]["w"] < ch["bars"][2]["x"]  # gap between bars

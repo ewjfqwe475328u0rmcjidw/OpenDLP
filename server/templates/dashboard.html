@@ -21,6 +21,16 @@
     .tile .l { font-size: 12px; color: #93a4c3; }
     .crit { color: #ff5c5c; } .high { color: #ff9b5c; } .med { color: #ffd36e; }
     .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid #243049; color: #93a4c3; }
+    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 16px; }
+    .chart svg { width: 100%; height: auto; display: block; }
+    .chart .bar { fill: #3987e5; }
+    .chart .hit { fill: transparent; }
+    .chart .hit:hover + .bar, .chart g:hover .bar { fill: #63a2ee; }
+    .chart .grid { stroke: #243049; stroke-width: 1; }
+    .chart .axis { fill: #93a4c3; font-size: 11px; }
+    .chart .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .chart details { margin-top: 8px; font-size: 12px; color: #93a4c3; }
+    .chart details table td, .chart details table th { font-size: 12px; padding: 2px 8px; }
     .muted { color: #93a4c3; font-size: 12px; }
   </style>
 </head>
@@ -34,6 +44,35 @@
     <div class="tile"><div class="n high">{{ sev.high }}</div><div class="l">High alerts (24h)</div></div>
     <div class="tile"><div class="n med">{{ sev.medium }}</div><div class="l">Medium alerts (24h)</div></div>
     <div class="tile"><div class="n">{{ sev.low }}</div><div class="l">Low alerts (24h)</div></div>
+  </div>
+
+
+  <div class="charts">
+    {% for ch in charts %}{% set c = ch.c %}
+    <div class="card chart">
+      <div class="head"><h2>{{ ch.title }}</h2><span class="muted">{{ ch.sub }} · total {{ c.total }}</span></div>
+      <svg viewBox="0 0 {{ c.width }} {{ c.height }}" role="img" aria-label="{{ ch.title }}, {{ ch.sub }}, total {{ c.total }}">
+        <line class="grid" x1="{{ c.left }}" x2="{{ c.width - 8 }}" y1="{{ c.top }}" y2="{{ c.top }}"/>
+        <line class="grid" x1="{{ c.left }}" x2="{{ c.width - 8 }}" y1="{{ c.mid }}" y2="{{ c.mid }}"/>
+        <line class="grid" x1="{{ c.left }}" x2="{{ c.width - 8 }}" y1="{{ c.base }}" y2="{{ c.base }}"/>
+        <text class="axis" x="{{ c.left - 6 }}" y="{{ c.top + 4 }}" text-anchor="end">{{ c.peak }}</text>
+        <text class="axis" x="{{ c.left - 6 }}" y="{{ c.base + 4 }}" text-anchor="end">0</text>
+        {% for b in c.bars %}
+        <g>
+          <title>{{ b.label }}: {{ b.count }}</title>
+          <rect class="hit" x="{{ b.slot_x }}" y="{{ c.top }}" width="{{ b.slot_w }}" height="{{ c.base - c.top }}"/>
+          {% if b.h > 0 %}<path class="bar" d="M{{ b.x }},{{ c.base }} V{{ b.y + [4, b.h]|min }} q0,-{{ [4, b.h]|min }} {{ [4, b.w / 2]|min }},-{{ [4, b.h]|min }} H{{ b.x + b.w - [4, b.w / 2]|min }} q{{ [4, b.w / 2]|min }},0 {{ [4, b.w / 2]|min }},{{ [4, b.h]|min }} V{{ c.base }} Z"/>{% endif %}
+          {% if b.tick %}<text class="axis" x="{{ b.x + b.w / 2 }}" y="{{ c.height - 6 }}" text-anchor="middle">{{ b.label }}</text>{% endif %}
+        </g>
+        {% endfor %}
+      </svg>
+      <details><summary>Show as table</summary>
+        <table><tr><th>{{ "Hour" if ch.id == "alerts24" else "Day" }}</th><th>Count</th></tr>
+          {% for b in c.bars %}<tr><td>{{ b.label }}</td><td>{{ b.count }}</td></tr>{% endfor %}
+        </table>
+      </details>
+    </div>
+    {% endfor %}
   </div>
 
   <div class="card">

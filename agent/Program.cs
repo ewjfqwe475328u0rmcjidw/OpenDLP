@@ -16,12 +16,6 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 
 namespace OpenDLP.Agent;
 
-public static class AgentVersion
-{
-    public static string Value =>
-        typeof(AgentVersion).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
-}
-
 internal static class Program
 {
     private static int Main(string[] args)
