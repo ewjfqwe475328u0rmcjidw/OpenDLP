@@ -44,6 +44,15 @@ jobs:
       - name: End-to-end test (server + agent on a clean Windows VM)
         shell: pwsh
         run: ./tests/e2e/run-e2e.ps1
+      - name: Publish release layout
+        shell: pwsh
+        run: |
+          ./tools/ci/run.ps1 "dotnet publish agent/OpenDLP.Agent.csproj -c Release -r win-x64 --self-contained false -o out/agent"
+          ./tools/ci/run.ps1 "dotnet publish watchdog/OpenDLP.Watchdog.csproj -c Release -r win-x64 --self-contained false -o out/agent"
+          Copy-Item agent/agent.config.example.json, agent/install-service.ps1, agent/uninstall-service.ps1 out/agent/
+      - name: Service-mode end-to-end test (install, Office files, print, self-healing, uninstall)
+        shell: pwsh
+        run: ./tests/e2e/run-service-e2e.ps1 -Publish out/agent
 
   docker:
     runs-on: ubuntu-latest
