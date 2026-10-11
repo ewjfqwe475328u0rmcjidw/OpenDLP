@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import csv
+import io
 import json
 import os
 import secrets
@@ -14,12 +16,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-# 必須透過環境變數設定；未設定時 API 一律拒絕驗證。
+# Must be set via environment variable; if unset, the API rejects all requests (fail closed).
 API_TOKEN = os.environ.get("OPENDLP_TOKEN", "").strip()
 DB_PATH = Path(os.environ.get("OPENDLP_DB", Path(__file__).parent / "opendlp.db"))
 MAX_EVENTS_PER_BATCH = 500
@@ -28,16 +30,18 @@ MAX_BODY_BYTES = int(os.environ.get("OPENDLP_MAX_BODY_BYTES", str(2 * 1024 * 102
 MIN_TOKEN_BYTES = 32
 VALID_LEVELS = {"DEBUG", "INFO", "WARN", "ALERT", "ERROR"}
 
-# 管理端（讀取事件／Agent 清單）使用獨立 token，避免任何一台端點都能讀取全部事件。
+# Admin reads (events / agent list) use a separate token so no single endpoint can read all events.
 ADMIN_TOKEN = os.environ.get("OPENDLP_ADMIN_TOKEN", "").strip()
-# 選用：JSON 檔 {"agent-id": "per-agent-token(>=32 bytes)"}；有登記的 Agent 只能用自己的 token。
+# Optional JSON file {"agent-id": "per-agent-token (>=32 bytes)"}; registered agents must use their own token.
 AGENT_TOKENS_PATH = os.environ.get("OPENDLP_AGENT_TOKENS", "").strip()
-# Dashboard：設定密碼啟用 HTTP Basic；未設定則預設停用（fail closed）。
+# Dashboard: set a password to enable HTTP Basic; if unset the dashboard is disabled (fail closed).
 DASHBOARD_USER = os.environ.get("OPENDLP_DASHBOARD_USER", "admin")
 DASHBOARD_PASSWORD = os.environ.get("OPENDLP_DASHBOARD_PASSWORD", "")
 DASHBOARD_INSECURE = os.environ.get("OPENDLP_DASHBOARD_INSECURE", "") == "1"
-# 事件保留天數；0 = 不自動清除。
+# Event retention in days; 0 = never purge.
 EVENT_RETENTION_DAYS = int(os.environ.get("OPENDLP_RETENTION_DAYS", "90"))
+# An agent that has not polled the server for this long is shown as "offline".
+OFFLINE_AFTER_SECONDS = int(os.environ.get("OPENDLP_OFFLINE_AFTER_SECONDS", "300"))
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -45,7 +49,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="OpenDLP Central Server", version="0.7.1", lifespan=lifespan)
+app = FastAPI(title="OpenDLP Central Server", version="0.8.0", lifespan=lifespan)
 _basic = HTTPBasic(auto_error=False)
 
 
@@ -248,7 +252,7 @@ def ingest(payload: TelemetryPayload, _agent: str = Depends(auth)) -> dict[str, 
 
 
 POLICY_PATH = Path(os.environ.get("OPENDLP_POLICY", Path(__file__).resolve().parent.parent / "policies" / "default-policy.json"))
-# 明確指定則固定版本；未指定則以政策檔修改時間作為單調遞增版本，編輯政策後 Agent 會自動更新。
+# Explicit value pins the version; otherwise the policy file mtime is used (monotonic), so edits propagate automatically.
 _env_version = os.environ.get("OPENDLP_POLICY_VERSION", "").strip()
 POLICY_VERSION: int | None = int(_env_version) if _env_version else None
 
@@ -337,8 +341,16 @@ def get_policy(version: int = 0, _agent: str = Depends(auth)) -> dict[str, Any] 
     return envelope
 
 
-@app.get("/api/v1/agents")
-def list_agents(_admin: None = Depends(admin_auth)) -> list[dict[str, Any]]:
+def agent_status(last_seen: str) -> str:
+    try:
+        seen = datetime.fromisoformat(last_seen)
+    except ValueError:
+        return "unknown"
+    age = (datetime.now(timezone.utc) - seen).total_seconds()
+    return "online" if age <= OFFLINE_AFTER_SECONDS else "offline"
+
+
+def query_agents() -> list[dict[str, Any]]:
     with _db_lock:
         conn = db()
         try:
@@ -347,57 +359,182 @@ def list_agents(_admin: None = Depends(admin_auth)) -> list[dict[str, Any]]:
             ).fetchall()
         finally:
             conn.close()
+    out = [dict(r) for r in rows]
+    for r in out:
+        r["status"] = agent_status(r["last_seen"])
+    return out
+
+
+def _like_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def query_events(
+    limit: int = 100,
+    agent_id: str | None = None,
+    level: str | None = None,
+    event_type: str | None = None,
+    since: str | None = None,
+    q: str | None = None,
+) -> list[dict[str, Any]]:
+    limit = max(1, min(limit, 5000))
+    where: list[str] = []
+    params: list[Any] = []
+    if agent_id:
+        where.append("agent_id = ?")
+        params.append(agent_id)
+    if level:
+        where.append("level = ?")
+        params.append(level.upper())
+    if event_type:
+        where.append("event_type = ?")
+        params.append(event_type)
+    if since:
+        where.append("ts >= ?")
+        params.append(_clean_ts(since, "1970-01-01T00:00:00+00:00"))
+    if q:
+        where.append("(message LIKE ? ESCAPE '\\' OR event_type LIKE ? ESCAPE '\\')")
+        pat = f"%{_like_escape(q)}%"
+        params += [pat, pat]
+    sql = "SELECT id, agent_id, ts, level, event_type, message, host, received_at FROM events"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    with _db_lock:
+        conn = db()
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/v1/agents")
+def list_agents(_admin: None = Depends(admin_auth)) -> list[dict[str, Any]]:
+    return query_agents()
 
 
 @app.get("/api/v1/events")
 def list_events(
     limit: int = 100,
     agent_id: str | None = None,
+    level: str | None = None,
+    event_type: str | None = None,
+    since: str | None = None,
+    q: str | None = None,
     _admin: None = Depends(admin_auth),
 ) -> list[dict[str, Any]]:
-    limit = max(1, min(limit, 500))
+    return query_events(min(limit, 500), agent_id, level, event_type, since, q)
+
+
+def _csv_safe(value: Any) -> str:
+    """Neutralise spreadsheet formula injection (cells starting with = + - @)."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+@app.get("/api/v1/events.csv", response_class=PlainTextResponse)
+def export_events_csv(
+    limit: int = 1000,
+    agent_id: str | None = None,
+    level: str | None = None,
+    event_type: str | None = None,
+    since: str | None = None,
+    q: str | None = None,
+    _admin: None = Depends(admin_auth),
+) -> Response:
+    rows = query_events(limit, agent_id, level, event_type, since, q)
+    buf = io.StringIO()
+    cols = ["id", "agent_id", "ts", "level", "event_type", "message", "host", "received_at"]
+    w = csv.writer(buf)
+    w.writerow(cols)
+    for r in rows:
+        w.writerow([_csv_safe(r[c]) for c in cols])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="opendlp-events.csv"'},
+    )
+
+
+@app.get("/api/v1/stats")
+def stats(_admin: None = Depends(admin_auth)) -> dict[str, Any]:
+    since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     with _db_lock:
         conn = db()
         try:
-            if agent_id:
-                rows = conn.execute(
-                    """
-                    SELECT id, agent_id, ts, level, event_type, message, host, received_at
-                    FROM events WHERE agent_id = ? ORDER BY id DESC LIMIT ?
-                    """,
-                    (agent_id, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT id, agent_id, ts, level, event_type, message, host, received_at
-                    FROM events ORDER BY id DESC LIMIT ?
-                    """,
-                    (limit,),
-                ).fetchall()
+            by_level = {
+                r["level"]: r["n"]
+                for r in conn.execute(
+                    "SELECT level, COUNT(*) AS n FROM events WHERE received_at >= ? GROUP BY level", (since,)
+                )
+            }
+            top_types = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT event_type, COUNT(*) AS n FROM events WHERE received_at >= ? "
+                    "GROUP BY event_type ORDER BY n DESC LIMIT 10",
+                    (since,),
+                )
+            ]
+            total = conn.execute("SELECT COUNT(*) AS n FROM events").fetchone()["n"]
         finally:
             conn.close()
-    return [dict(r) for r in rows]
+    agents = query_agents()
+    return {
+        "agents_total": len(agents),
+        "agents_online": sum(1 for a in agents if a["status"] == "online"),
+        "events_total": total,
+        "events_24h_by_level": by_level,
+        "events_24h_top_types": top_types,
+    }
+
+
+@app.get("/api/v1/admin/policy")
+def admin_get_policy(_admin: None = Depends(admin_auth)) -> dict[str, Any]:
+    try:
+        obj = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+        mtime = int(POLICY_PATH.stat().st_mtime)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail="Policy file is missing or invalid") from exc
+    return {"version": POLICY_VERSION if POLICY_VERSION is not None else mtime, "policy": obj}
+
+
+@app.put("/api/v1/admin/policy")
+def admin_put_policy(policy: dict[str, Any], _admin: None = Depends(admin_auth)) -> dict[str, Any]:
+    """Validate and atomically replace the policy; the previous file is kept as <name>.bak."""
+    problems = validate_policy(policy)
+    if problems:
+        raise HTTPException(status_code=422, detail=problems[:20])
+    prev_mtime = int(POLICY_PATH.stat().st_mtime) if POLICY_PATH.exists() else 0
+    tmp = POLICY_PATH.with_suffix(POLICY_PATH.suffix + ".tmp")
+    tmp.write_text(json.dumps(policy, ensure_ascii=False, indent=2), encoding="utf-8")
+    if POLICY_PATH.exists():
+        POLICY_PATH.with_suffix(POLICY_PATH.suffix + ".bak").write_bytes(POLICY_PATH.read_bytes())
+    os.replace(tmp, POLICY_PATH)
+    # Guarantee a strictly increasing version even for two edits within the same second.
+    new_mtime = max(int(datetime.now(timezone.utc).timestamp()), prev_mtime + 1)
+    os.utime(POLICY_PATH, (new_mtime, new_mtime))
+    return {
+        "ok": True,
+        "version": POLICY_VERSION if POLICY_VERSION is not None else new_mtime,
+        "note": "OPENDLP_POLICY_VERSION is pinned; agents will not update until it is raised"
+        if POLICY_VERSION is not None
+        else "agents will pick this up on their next poll",
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, _auth: None = Depends(dashboard_auth)) -> HTMLResponse:
-    with _db_lock:
-        conn = db()
-        try:
-            agents = conn.execute(
-                "SELECT agent_id, last_seen, last_event FROM agents ORDER BY last_seen DESC"
-            ).fetchall()
-            events = conn.execute(
-                """
-                SELECT agent_id, ts, level, event_type, message
-                FROM events ORDER BY id DESC LIMIT 50
-                """
-            ).fetchall()
-        finally:
-            conn.close()
-
+def dashboard(
+    request: Request,
+    level: str = "",
+    agent_id: str = "",
+    q: str = "",
+    _auth: None = Depends(dashboard_auth),
+) -> HTMLResponse:
+    agents = query_agents()
+    events = query_events(100, agent_id or None, level or None, None, None, q or None)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -405,6 +542,10 @@ def dashboard(request: Request, _auth: None = Depends(dashboard_auth)) -> HTMLRe
             "agents": agents,
             "events": events,
             "now": datetime.now(timezone.utc).isoformat(),
+            "f_level": level,
+            "f_agent": agent_id,
+            "f_q": q,
+            "online": sum(1 for a in agents if a["status"] == "online"),
         },
     )
 

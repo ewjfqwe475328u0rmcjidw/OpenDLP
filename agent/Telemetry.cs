@@ -22,7 +22,7 @@ public sealed class ServerClient : IDisposable
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         _http.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {cfg.ApiToken}");
         _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Agent-Id", cfg.AgentId);
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Agent-Version", "0.7.1");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Agent-Version", "0.8.0");
     }
 
     /// <summary>Upload events from the durable on-disk outbox; the cursor only advances after the server accepted the batch.</summary>

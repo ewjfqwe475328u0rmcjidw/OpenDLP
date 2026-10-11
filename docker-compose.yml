@@ -1,0 +1,16 @@
+# Usage: copy server/.env.example to .env, fill in the secrets, then: docker compose up -d
+# Put a TLS reverse proxy (Caddy, nginx, Traefik) in front before exposing this beyond localhost.
+services:
+  opendlp-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - opendlp-data:/data
+      - ./policies:/app/policies
+    restart: unless-stopped
+volumes:
+  opendlp-data:

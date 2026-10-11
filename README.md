@@ -1,4 +1,4 @@
-# OpenDLP v0.7.1
+# OpenDLP v0.8.0
 
 Open-source **endpoint audit & detection MVP**: a Windows Agent + Watchdog + FastAPI central server. It is an **audit-first prototype**, not a finished commercial DLP product.
 
@@ -77,6 +77,17 @@ Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. 
 
 The default policy is `policies/default-policy.json` (override with `OPENDLP_POLICY`). It is validated before being signed. Policies are signed with HMAC-SHA256 using a key derived from the agent's token — a shared-secret prototype design, not asymmetric signing. Use TLS and protect your tokens.
 
+### Docker
+
+```bash
+cp server/.env.example .env      # fill in the secrets
+docker compose up -d             # server on 127.0.0.1:8000; put a TLS reverse proxy in front for remote access
+```
+
+### Extra API endpoints (admin token)
+
+`GET /api/v1/events?level=ALERT&q=text&since=...`, `GET /api/v1/events.csv`, `GET /api/v1/stats`, `GET|PUT /api/v1/admin/policy` (validated; agents pick up edits on their next poll).
+
 ## Configure and run the Agent
 
 1. On Windows, open the `agent` folder.
@@ -108,6 +119,7 @@ For manual Windows testing, also cover: valid/invalid token, bad policy signatur
 
 ## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md). 
 Issues and pull requests are welcome — especially Windows test reports (OS version, .NET SDK version, build output, observed behavior). Please do not post secrets, personal data or sensitive logs.
 
 ## License

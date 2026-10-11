@@ -222,3 +222,73 @@ def test_retention_purges_old_events(client, monkeypatch):
     conn.commit(); conn.close()
     monkeypatch.setattr(main, "EVENT_RETENTION_DAYS", 30)
     assert main.purge_old_events() == 1
+
+
+def _seed(c, token):
+    c.post("/api/v1/telemetry", headers=headers(token), json={"agentId": "agent-test", "events": [
+        {"level": "ALERT", "eventType": "TW_ID", "message": "found 100%_match in report.docx"},
+        {"level": "INFO", "eventType": "START", "message": "agent started"},
+        {"level": "WARN", "eventType": "USB", "message": "=cmd|' /C calc'!A0"}]})
+
+
+def test_event_filters(client):
+    c, token = client
+    _seed(c, token)
+    ev = lambda **p: c.get("/api/v1/events", headers=admin(), params=p).json()
+    assert len(ev()) == 3
+    assert [e["event_type"] for e in ev(level="alert")] == ["TW_ID"]
+    assert [e["event_type"] for e in ev(event_type="USB")] == ["USB"]
+    assert [e["event_type"] for e in ev(q="report")] == ["TW_ID"]
+    assert [e["event_type"] for e in ev(q="100%_")] == ["TW_ID"]   # LIKE wildcards are escaped
+    assert ev(q="%") == [e for e in ev(q="%")] and len(ev(q="%")) == 1
+    assert ev(agent_id="nobody") == []
+    assert len(ev(since="2999-01-01T00:00:00Z")) == 0
+
+
+def test_csv_export_neutralises_formulas(client):
+    c, token = client
+    _seed(c, token)
+    r = c.get("/api/v1/events.csv", headers=admin())
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert "'=cmd" in r.text and ",=cmd" not in r.text
+    assert c.get("/api/v1/events.csv", headers=headers(token)).status_code == 403
+
+
+def test_agent_status_and_stats(client, monkeypatch):
+    c, token = client
+    _seed(c, token)
+    a = c.get("/api/v1/agents", headers=admin()).json()[0]
+    assert a["status"] == "online"
+    monkeypatch.setattr(main, "OFFLINE_AFTER_SECONDS", -1)
+    assert c.get("/api/v1/agents", headers=admin()).json()[0]["status"] == "offline"
+    st = c.get("/api/v1/stats", headers=admin()).json()
+    assert st["events_total"] == 3 and st["events_24h_by_level"]["ALERT"] == 1 and st["agents_total"] == 1
+
+
+def test_admin_policy_roundtrip_and_validation(client, monkeypatch):
+    c, token = client
+    monkeypatch.setattr(main, "POLICY_VERSION", None)
+    v1 = c.get("/api/v1/admin/policy", headers=admin()).json()["version"]
+    new = {"rules": [{"id": "R1", "type": "keywords", "keywords": ["secret"], "severity": "high", "action": "alert"}]}
+    r = c.put("/api/v1/admin/policy", headers=admin(), json=new)
+    assert r.status_code == 200 and r.json()["version"] > v1
+    assert main.POLICY_PATH.with_suffix(".json.bak").exists()
+    # agents now receive the new policy, still correctly signed
+    env = c.get(f"/api/v1/policy?version={v1}", headers=headers(token)).json()
+    assert json.loads(env["policyJson"])["rules"][0]["id"] == "R1"
+    # a second edit in the same second still bumps the version
+    r2 = c.put("/api/v1/admin/policy", headers=admin(), json=new)
+    assert r2.json()["version"] > r.json()["version"]
+    # invalid policy rejected and file untouched
+    bad = c.put("/api/v1/admin/policy", headers=admin(), json={"rules": [{"id": "X", "type": "regex", "pattern": "("}]})
+    assert bad.status_code == 422
+    assert json.loads(main.POLICY_PATH.read_text())["rules"][0]["id"] == "R1"
+    # agents cannot edit policy
+    assert c.put("/api/v1/admin/policy", headers=headers(token), json=new).status_code == 403
+
+
+def test_dashboard_filters(client):
+    c, token = client
+    _seed(c, token)
+    html = c.get("/", auth=("admin", "dash-pass"), params={"level": "ALERT"}).text
+    assert "TW_ID" in html and "agent started" not in html
