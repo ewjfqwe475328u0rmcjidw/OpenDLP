@@ -175,9 +175,9 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push: server tests, Do
 
 For manual Windows testing, also cover: valid/invalid token, bad policy signature, offline retry, log retention, helper IPC permissions, and service start/stop.
 
-## Hosted version and pricing (planned)
+## Support plans
 
-Don't want to run a server? A hosted OpenDLP (server, updates, backups, monthly reports, e-mail support) is planned. Prices are fixed and public - no sales call needed:
+OpenDLP is free and complete: every feature above is in the open-source edition. If you want help, support plans are available for organisations that run OpenDLP **on their own server**. Prices are fixed and public - no sales call needed:
 
 | Plan | Endpoints | Monthly | Yearly (10 months' price) |
 |---|---|---|---|
@@ -187,7 +187,15 @@ Don't want to run a server? A hosted OpenDLP (server, updates, backups, monthly 
 
 Scale examples: 200 endpoints = $200/month or $2,000/year; 500 = $500/month or $5,000/year; 1,000 = $1,000/month or $10,000/year. Endpoints are counted in steps of 10 (e.g. 143 endpoints are billed as 150). Prices in USD, excluding local taxes.
 
-If you'd use it, [tell us here](../../issues/new?template=hosted-interest.yml) - nothing to pay now. The open-source edition stays free and complete; every feature above is in it.
+**What a plan includes:** help installing the server and rolling out agents, help tuning policies and reducing false positives, answers by e-mail or GitHub on a best-effort basis, and priority for bug fixes and feature requests.
+
+**What it does not include:**
+
+- **No hosting and no access to your data.** You run the server; your events, logs, alerts and reports stay on your infrastructure. We never receive, store or process them. Please don't send them to us; describe problems with redacted examples.
+- **No guarantee and no liability.** OpenDLP is an audit and detection tool provided "as is", without warranty of any kind, as stated in the GPL-3.0 license. It does not guarantee that data leaks are prevented or detected. You remain responsible for your deployment, your data, your compliance obligations and your decisions. Support fees are not insurance, and to the maximum extent permitted by law, total liability for anything related to the software or the support is limited to the support fees paid in the previous 3 months.
+- **No response-time guarantee** (SLA), on-call or incident response.
+
+If you're interested, [tell us here](../../issues/new?template=support-interest.yml) - nothing to pay now.
 
 ## Contributing
 

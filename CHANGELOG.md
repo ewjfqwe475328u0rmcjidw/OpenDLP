@@ -5,7 +5,7 @@
 - **Screen watermark (Windows)**: faint, click-through `{user} · {host} · {date}` tiled across all monitors; off by default, ideal per department via group policies.
 - **Outbound e-mail scanning (report-only)**: Microsoft 365 and Gmail messages sent to external recipients with sensitive data or fingerprinted attachments → `EMAIL_EXTERNAL_SENSITIVE`. Tested against simulated APIs; see docs/EMAIL-SCAN.md.
 - Windows agent now targets `net8.0-windows10.0.19041.0` (Windows 10 1809 or later) for the built-in OCR engine.
-- **Public pricing** for the planned hosted service in the README, including fleets over 100 endpoints.
+- **Support plans** for self-hosted deployments with public prices (including fleets over 100 endpoints) and clear terms: no hosting, no access to customer data, no warranty, liability capped. Replaces the planned hosted service.
 - **Tamper-evident audit log**: every event and every administrator action is chained with HMAC-SHA256 (`OPENDLP_AUDIT_KEY`, kept outside the database). Editing, deleting or re-ordering any record is detected (`GET /api/v1/admin/audit/verify`, dashboard tile, monthly report section). Retention purges move a verified anchor, so the chain survives them.
 - **Administrator audit trail**: policy, group, fingerprint and agent changes, cloud scans and dashboard sign-ins are recorded as `ADMIN_ACTION` events with the acting user.
 - **SIEM forwarding**: every event streamed as RFC 5424 syslog in CEF (default) or JSON over UDP, TCP or TLS (`OPENDLP_SYSLOG`) to Splunk, Microsoft Sentinel, QRadar, Wazuh, Graylog or Elastic. Background queue; an unreachable SIEM never slows agents.

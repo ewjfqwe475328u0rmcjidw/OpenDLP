@@ -1,0 +1,42 @@
+name: Support plan - interest
+description: Tell us you'd want a paid support plan for your self-hosted OpenDLP
+title: "[Support] interest"
+labels: ["support-interest"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Support plans help you install, configure and keep **your own** OpenDLP server running. We never host,
+        receive or access your data. See the README for prices and terms. Nothing to pay now.
+
+        **This issue is public.** Don't post your company name, logs, policies, alerts or anything confidential.
+  - type: dropdown
+    id: size
+    attributes:
+      label: How many computers would you protect?
+      options: ["1-25", "26-100", "101-500", "500+"]
+    validations: {required: true}
+  - type: dropdown
+    id: role
+    attributes:
+      label: You are...
+      options: ["IT for my own company", "MSP / IT service provider for several clients", "Security consultant", "Just evaluating"]
+    validations: {required: true}
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Platforms
+      options:
+        - label: Windows
+        - label: macOS
+        - label: Linux
+  - type: dropdown
+    id: price
+    attributes:
+      label: Would the listed price work for you?
+      options: ["Yes", "Yes, if billed yearly", "Too expensive", "I'd pay more for extra help (tell us below)"]
+  - type: textarea
+    id: needs
+    attributes:
+      label: What help would make it worth paying for?
+      description: e.g. installation help, policy tuning, deployment scripts for your tools, a feature you need
