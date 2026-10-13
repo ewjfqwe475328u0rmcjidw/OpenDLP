@@ -45,6 +45,24 @@ public class OcrTests
         finally { File.Delete(path); }
     }
 
+    private static async Task<string> OcrOf(string[] lines, int fontPx, int gap, int width = 1000)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ocr-{Guid.NewGuid():N}.png");
+        var height = 60 + lines.Length * (fontPx + gap);
+        using (var bmp = new Bitmap(width, height, PixelFormat.Format24bppRgb))
+        using (var g = Graphics.FromImage(bmp))
+        using (var font = new Font("Arial", fontPx, FontStyle.Regular, GraphicsUnit.Pixel))
+        {
+            g.Clear(Color.White);
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            for (var i = 0; i < lines.Length; i++) g.DrawString(lines[i], font, Brushes.Black, 30, 30 + i * (fontPx + gap));
+            bmp.Save(path, ImageFormat.Png);
+        }
+        try { return (await WindowsOcr.RecognizeAsync(path, CancellationToken.None) ?? "<null>").Replace("\r", " ").Replace("\n", " | "); }
+        catch (Exception ex) { return $"<{ex.GetType().Name}: {ex.Message}>"; }
+        finally { File.Delete(path); }
+    }
+
     /// <summary>Real recognition with the built-in Windows engine when the OS has an OCR language installed.</summary>
     [Fact]
     public async Task WindowsOcrReadsACardNumberFromAScreenshot()
@@ -54,30 +72,18 @@ public class OcrTests
             _out.WriteLine("Windows OCR engine not available on this machine (no OCR language installed); skipped.");
             return;
         }
-        var path = Path.Combine(Path.GetTempPath(), $"ocr-{Guid.NewGuid():N}.png");
-        using (var bmp = new Bitmap(1000, 260))
-        using (var g = Graphics.FromImage(bmp))
-        using (var font = new Font("Arial", 40, FontStyle.Regular, GraphicsUnit.Pixel))
+        var variants = new (string Name, string[] Lines, int Px, int Gap)[]
         {
-            g.Clear(Color.White);
-            g.DrawString("Customer payment details", font, Brushes.Black, 30, 40);
-            g.DrawString("Card: 4111 1111 1111 1111", font, Brushes.Black, 30, 150);
-            bmp.Save(path, ImageFormat.Png);
-        }
-        try
-        {
-            string? text;
-            try { text = await WindowsOcr.RecognizeAsync(path, CancellationToken.None); }
-            catch (Exception ex) { throw new Xunit.Sdk.XunitException($"OCR text: <exception> {ex.GetType().Name}: {ex.Message}"); }
-            _out.WriteLine($"OCR text: {text}");
-            Assert.True(text != null, "OCR text: <null>");
-            var policy = new PolicyStore(Path.Combine(Path.GetTempPath(), "none.json"), Path.Combine(AppContext.BaseDirectory, "policy.default.json"));
-            policy.LoadFromDisk();
-            var hits = new ContentScanner(policy).Scan(text!);
-            Assert.True(hits.Any(h => h.RuleId == "CREDIT-CARD"),
-                $"OCR text: [{text!.Replace("\r", " ").Replace("\n", " | ")}] rules: [{string.Join(",", hits.Select(h => h.RuleId))}]");
-        }
-        finally { File.Delete(path); }
+            ("two-lines-40", new[] { "Customer payment details", "Card: 4111 1111 1111 1111" }, 40, 70),
+            ("two-lines-tight", new[] { "Customer payment details", "Card: 4111 1111 1111 1111" }, 32, 12),
+            ("card-only", new[] { "Card: 4111 1111 1111 1111" }, 32, 12),
+            ("words-and-number", new[] { "Visa card number 4111 1111 1111 1111 expires 12/29" }, 28, 12),
+            ("three-lines", new[] { "Customer: Alice Chen", "Card number: 4111 1111 1111 1111", "Expiry 12/29" }, 28, 14),
+        };
+        var report = new List<string>();
+        foreach (var v in variants)
+            report.Add($"{v.Name}=[{await OcrOf(v.Lines, v.Px, v.Gap)}]");
+        throw new Xunit.Sdk.XunitException("OCR text: " + string.Join(" ;; ", report));
     }
 }
 
