@@ -22,8 +22,11 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+import audit
 import cloudscan
 import report
+import siem
+import sso
 
 # Must be set via environment variable; if unset, the API rejects all requests (fail closed).
 API_TOKEN = os.environ.get("OPENDLP_TOKEN", "").strip()
@@ -81,6 +84,21 @@ SMTP_PASSWORD = os.environ.get("OPENDLP_SMTP_PASSWORD", "")
 SMTP_FROM = os.environ.get("OPENDLP_SMTP_FROM", "")
 SMTP_TO = [x.strip() for x in os.environ.get("OPENDLP_SMTP_TO", "").split(",") if x.strip()]
 SMTP_STARTTLS = os.environ.get("OPENDLP_SMTP_STARTTLS", "1") != "0"
+# Tamper-evident event log: HMAC key for the hash chain. Keep it outside the database (env / secrets manager).
+AUDIT_KEY = os.environ.get("OPENDLP_AUDIT_KEY", "").strip().encode("utf-8")
+# SIEM forwarding: udp://host:514, tcp://host:514 or tls://host:6514; format cef (default) or json.
+SYSLOG_URL = os.environ.get("OPENDLP_SYSLOG", "").strip()
+SYSLOG_FORMAT = os.environ.get("OPENDLP_SYSLOG_FORMAT", "cef").strip().lower()
+# Dashboard single sign-on (OpenID Connect). Admins / viewers: comma-separated addresses or @domain entries.
+OIDC_ISSUER = os.environ.get("OPENDLP_OIDC_ISSUER", "").strip()
+OIDC_CLIENT_ID = os.environ.get("OPENDLP_OIDC_CLIENT_ID", "").strip()
+OIDC_CLIENT_SECRET = os.environ.get("OPENDLP_OIDC_CLIENT_SECRET", "").strip()
+OIDC_ADMINS = os.environ.get("OPENDLP_OIDC_ADMINS", "")
+OIDC_VIEWERS = os.environ.get("OPENDLP_OIDC_VIEWERS", "")
+SESSION_HOURS = int(os.environ.get("OPENDLP_SESSION_HOURS", "8"))
+# Signs dashboard session cookies. If unset a random key is used (everyone is signed out on restart).
+SESSION_SECRET = (os.environ.get("OPENDLP_SESSION_SECRET", "").strip() or secrets.token_hex(32)).encode("utf-8")
+VERSION = "0.13.0"
 
 _stop_scheduler = threading.Event()
 
@@ -99,7 +117,7 @@ def run_monthly_report_job(now: datetime | None = None) -> str | None:
     with _db_lock:
         conn = db()
         try:
-            return report.maybe_send_monthly(conn, now or datetime.now(timezone.utc), ORG_NAME, deliver_report_email)
+            return report.maybe_send_monthly(conn, now or datetime.now(timezone.utc), ORG_NAME, deliver_report_email, AUDIT_KEY)
         except Exception:  # noqa: BLE001 - never crash the scheduler; it retries next hour
             return None
         finally:
@@ -115,7 +133,7 @@ async def lifespan(_app: FastAPI):
     _stop_scheduler.set()
 
 
-app = FastAPI(title="OpenDLP Central Server", version="0.13.0", lifespan=lifespan)
+app = FastAPI(title="OpenDLP Central Server", version=VERSION, lifespan=lifespan)
 _basic = HTTPBasic(auto_error=False)
 
 
@@ -178,14 +196,54 @@ def init_db() -> None:
             ("host", "TEXT"),
             ("agent_version", "TEXT"),
             ("display_name", "TEXT"),
+            ("group_name", "TEXT"),
         ):
             if col not in cols:
                 conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {ddl}")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS group_policies (name TEXT PRIMARY KEY, overlay TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        audit.ensure_schema(conn)
         conn.commit()
         conn.close()
 
 
 init_db()
+
+_forwarder: siem.Forwarder | None = siem.Forwarder(SYSLOG_URL, SYSLOG_FORMAT, VERSION) if SYSLOG_URL else None
+
+
+def store_events(conn: sqlite3.Connection, rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
+    """The only way events are written: extends the tamper-evident chain. Caller holds _db_lock and commits,
+    then passes the result to forward_events()."""
+    ids = audit.append(conn, AUDIT_KEY, rows)
+    out = []
+    for (rid, chain), row in zip(ids, rows):
+        ev = dict(zip(audit.EVENT_COLUMNS, row))
+        ev["id"], ev["chain"] = rid, chain
+        out.append(ev)
+    return out
+
+
+def forward_events(events: list[dict[str, Any]]) -> None:
+    if _forwarder is None:
+        return
+    for ev in events:
+        _forwarder.submit(ev, _severity_of(str(ev.get("message") or "")) if ev.get("level") == "ALERT" else "")
+
+
+def record_admin_action(actor: str, action: str, detail: str = "") -> None:
+    """Who changed what, stored in the same tamper-evident log as agent events (agent_id 'server')."""
+    now = datetime.now(timezone.utc).isoformat()
+    msg = f"actor={actor} action={action}" + (f" {detail}" if detail else "")
+    with _db_lock:
+        conn = db()
+        try:
+            evs = store_events(conn, [("server", now, "INFO", "ADMIN_ACTION", msg[:MAX_MESSAGE_LEN], "server", now)])
+            conn.commit()
+        finally:
+            conn.close()
+    forward_events(evs)
 
 
 class TelemetryPayload(BaseModel):
@@ -308,23 +366,63 @@ def viewer_auth(authorization: str | None = Header(default=None)) -> str:
     raise HTTPException(status_code=403, detail="Invalid token")
 
 
-def dashboard_auth(credentials: HTTPBasicCredentials | None = Depends(_basic)) -> str:
-    """Returns 'admin' or 'viewer'."""
+SESSION_COOKIE = "opendlp_session"
+LOGIN_COOKIE = "opendlp_login"
+_oidc: sso.Provider | None = (
+    sso.Provider(OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, cloudscan.default_http)
+    if OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET else None
+)
+
+
+def _same_origin(request: Request) -> bool:
+    origin = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not origin:
+        return False
+    from urllib.parse import urlparse
+
+    return urlparse(origin).netloc == request.headers.get("host", request.url.netloc)
+
+
+def dashboard_auth(request: Request, credentials: HTTPBasicCredentials | None = Depends(_basic)) -> str:
+    """Returns 'admin' or 'viewer' and sets request.state.actor (who is acting, for the audit log)."""
+    # Browsers attach cookies and Basic credentials automatically, so state-changing dashboard requests must come
+    # from our own pages (CSRF protection). Scripts should use the /api/v1/admin endpoints with a bearer token.
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Cross-site request refused")
+    session = sso.unsign(request.cookies.get(SESSION_COOKIE), SESSION_SECRET)
+    if session and session.get("role") in {"admin", "viewer"}:
+        request.state.actor = "sso:" + str(session.get("sub", ""))
+        return str(session["role"])
+    if DASHBOARD_PASSWORD and credentials is not None:
+        if _token_ok(credentials.username, DASHBOARD_USER) and _token_ok(credentials.password, DASHBOARD_PASSWORD):
+            request.state.actor = credentials.username
+            return "admin"
+        if DASHBOARD_VIEWER_PASSWORD and _token_ok(credentials.username, DASHBOARD_VIEWER_USER) and _token_ok(
+            credentials.password, DASHBOARD_VIEWER_PASSWORD
+        ):
+            request.state.actor = credentials.username
+            return "viewer"
+    if _oidc is not None:
+        if request.method == "GET" and credentials is None:
+            from urllib.parse import quote
+
+            raise HTTPException(status_code=303, detail="Sign-in required",
+                                headers={"Location": "/login?next=" + quote(request.url.path, safe="/")})
+        raise HTTPException(status_code=401, detail="Sign-in required")
     if DASHBOARD_PASSWORD:
-        if credentials is not None:
-            if _token_ok(credentials.username, DASHBOARD_USER) and _token_ok(credentials.password, DASHBOARD_PASSWORD):
-                return "admin"
-            if DASHBOARD_VIEWER_PASSWORD and _token_ok(credentials.username, DASHBOARD_VIEWER_USER) and _token_ok(
-                credentials.password, DASHBOARD_VIEWER_PASSWORD
-            ):
-                return "viewer"
         raise HTTPException(status_code=401, detail="Authentication required", headers={"WWW-Authenticate": "Basic"})
     if not DASHBOARD_INSECURE:
         raise HTTPException(
             status_code=404,
-            detail="Dashboard disabled: set OPENDLP_DASHBOARD_PASSWORD (or OPENDLP_DASHBOARD_INSECURE=1 for local dev only)",
+            detail="Dashboard disabled: set OPENDLP_DASHBOARD_PASSWORD or OIDC single sign-on "
+            "(or OPENDLP_DASHBOARD_INSECURE=1 for local dev only)",
         )
+    request.state.actor = "insecure-dev"
     return "admin"
+
+
+def actor_of(request: Request) -> str:
+    return str(getattr(request.state, "actor", "unknown"))
 
 
 def _clean_ts(raw: Any, fallback: str) -> str:
@@ -344,9 +442,9 @@ def purge_old_events() -> int:
     with _db_lock:
         conn = db()
         try:
-            cur = conn.execute("DELETE FROM events WHERE received_at < ?", (cutoff,))
+            n = audit.purge_before(conn, cutoff)
             conn.commit()
-            return cur.rowcount
+            return n
         finally:
             conn.close()
 
@@ -362,6 +460,7 @@ def ingest(
     now = datetime.now(timezone.utc).isoformat()
     inserted = 0
     notify: list[dict[str, Any]] = []
+    rows: list[tuple[Any, ...]] = []
     seen_host = ""
 
     with _db_lock:
@@ -379,14 +478,9 @@ def ingest(
                 if level == "ALERT" and _severity_rank(_severity_of(message)) >= _severity_rank(NOTIFY_MIN_SEVERITY):
                     notify.append({"agent_id": payload.agentId, "host": host, "ts": ts, "event_type": event_type, "message": message})
 
-                conn.execute(
-                    """
-                    INSERT INTO events(agent_id, ts, level, event_type, message, host, received_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (payload.agentId, ts, level, event_type, message, host, now),
-                )
+                rows.append((payload.agentId, ts, level, event_type, message, host, now))
                 inserted += 1
+            stored = store_events(conn, rows)
 
             conn.execute(
                 """
@@ -406,6 +500,7 @@ def ingest(
         finally:
             conn.close()
 
+    forward_events(stored)
     if notify:
         send_notifications(notify)
     return {"ok": True, "inserted": inserted}
@@ -643,14 +738,74 @@ def _bump_fingerprint_version(conn: sqlite3.Connection) -> int:
     return new
 
 
-def policy_envelope(agent_id: str) -> dict[str, Any]:
+_GROUP_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,63}$")
+
+
+def merge_policy(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Group overlay on top of the company policy.
+    - rules: a rule with an existing id replaces it, a new id is appended
+    - disableRules: list of rule ids to drop
+    - objects (usb, browser, ai, ...): keys are merged one level deep
+    - anything else: replaced"""
+    out = json.loads(json.dumps(base))
+    for key, val in overlay.items():
+        if key == "rules" and isinstance(val, list):
+            by_id = {r.get("id"): i for i, r in enumerate(out.get("rules", [])) if isinstance(r, dict)}
+            for r in val:
+                if isinstance(r, dict) and r.get("id") in by_id:
+                    out["rules"][by_id[r["id"]]] = r
+                else:
+                    out.setdefault("rules", []).append(r)
+        elif key == "disableRules" and isinstance(val, list):
+            out["rules"] = [r for r in out.get("rules", []) if not (isinstance(r, dict) and r.get("id") in val)]
+        elif isinstance(val, dict) and isinstance(out.get(key), dict):
+            out[key] = {**out[key], **val}
+        else:
+            out[key] = val
+    return out
+
+
+def _read_base_policy() -> tuple[dict[str, Any], int]:
     try:
-        policy_obj = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
-        mtime = int(POLICY_PATH.stat().st_mtime)
+        return json.loads(POLICY_PATH.read_text(encoding="utf-8")), int(POLICY_PATH.stat().st_mtime)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail="Policy file is missing") from exc
     except (json.JSONDecodeError, OSError) as exc:
         raise HTTPException(status_code=500, detail="Policy file is invalid or unreadable") from exc
+
+
+def group_of(agent_id: str) -> str | None:
+    with _db_lock:
+        conn = db()
+        try:
+            row = conn.execute("SELECT group_name FROM agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        finally:
+            conn.close()
+    return row["group_name"] if row and row["group_name"] else None
+
+
+def group_overlay(name: str) -> dict[str, Any] | None:
+    with _db_lock:
+        conn = db()
+        try:
+            row = conn.execute("SELECT overlay FROM group_policies WHERE name = ?", (name,)).fetchone()
+        finally:
+            conn.close()
+    return json.loads(row["overlay"]) if row else None
+
+
+def effective_policy(agent_id: str | None) -> dict[str, Any]:
+    policy_obj, _ = _read_base_policy()
+    group = group_of(agent_id) if agent_id else None
+    overlay = group_overlay(group) if group else None
+    if overlay:
+        policy_obj = merge_policy(policy_obj, overlay)
+    return policy_obj
+
+
+def policy_envelope(agent_id: str) -> dict[str, Any]:
+    _, mtime = _read_base_policy()
+    policy_obj = effective_policy(agent_id)
 
     problems = validate_policy(policy_obj)
     if problems:
@@ -695,7 +850,7 @@ def query_agents() -> list[dict[str, Any]]:
         conn = db()
         try:
             rows = conn.execute(
-                "SELECT agent_id, last_seen, last_event, enrolled_at, revoked, host, agent_version, display_name, "
+                "SELECT agent_id, last_seen, last_event, enrolled_at, revoked, host, agent_version, display_name, group_name, "
                 "CASE WHEN token_hash IS NULL THEN 0 ELSE 1 END AS enrolled FROM agents ORDER BY last_seen DESC"
             ).fetchall()
         finally:
@@ -921,6 +1076,7 @@ def admin_put_policy(policy: dict[str, Any], _admin: str = Depends(admin_auth)) 
     # Guarantee a strictly increasing version even for two edits within the same second.
     new_mtime = max(int(datetime.now(timezone.utc).timestamp()), prev_mtime + 1)
     os.utime(POLICY_PATH, (new_mtime, new_mtime))
+    record_admin_action("api-admin-token", "policy_update", f"rules={len(policy.get('rules', []))}")
     return {
         "ok": True,
         "version": POLICY_VERSION if POLICY_VERSION is not None else new_mtime,
@@ -989,6 +1145,7 @@ def revoke_agent(agent_id: str, _admin: str = Depends(admin_auth)) -> dict[str, 
     _token_cache.pop(agent_id, None)
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="Unknown agent")
+    record_admin_action("api-admin-token", "agent_revoke", f"agent={agent_id}")
     return {"ok": True, "agent_id": agent_id, "revoked": True}
 
 
@@ -1003,6 +1160,7 @@ def unrevoke_agent(agent_id: str, _admin: str = Depends(admin_auth)) -> dict[str
             conn.close()
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="Unknown agent")
+    record_admin_action("api-admin-token", "agent_unrevoke", f"agent={agent_id}")
     return {"ok": True, "agent_id": agent_id, "revoked": False}
 
 
@@ -1019,6 +1177,7 @@ def delete_agent(agent_id: str, _admin: str = Depends(admin_auth)) -> dict[str, 
     _token_cache.pop(agent_id, None)
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="Unknown agent")
+    record_admin_action("api-admin-token", "agent_delete", f"agent={agent_id}")
     return {"ok": True}
 
 
@@ -1059,6 +1218,10 @@ def dashboard(
             "f_q": q,
             "online": sum(1 for a in agents if a["status"] == "online"),
             "role": role,
+            "actor": actor_of(request),
+            "sso": _oidc is not None,
+            "groups": [g["name"] for g in list_groups()],
+            "audit": verify_audit_chain(),
             "sev": sev,
             "charts": [
                 {"id": "alerts24", "title": "Alerts per hour", "sub": "last 24 hours, UTC", "c": alerts_24h},
@@ -1109,7 +1272,7 @@ def record_cloud_result(res: "cloudscan.ScanResult") -> None:
     with _db_lock:
         conn = db()
         try:
-            conn.executemany("INSERT INTO events(agent_id, ts, level, event_type, message, host, received_at) VALUES (?, ?, ?, ?, ?, ?, ?)", events)
+            stored = store_events(conn, events)
             conn.execute(
                 "INSERT INTO agents(agent_id, last_seen, last_event, host, display_name) VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(agent_id) DO UPDATE SET last_seen = excluded.last_seen, last_event = excluded.last_event",
@@ -1119,6 +1282,7 @@ def record_cloud_result(res: "cloudscan.ScanResult") -> None:
             conn.commit()
         finally:
             conn.close()
+    forward_events(stored)
     alerts = [{"agent_id": agent_id, "host": res.source, "ts": now, "event_type": "CLOUD_PUBLIC_SHARE", "message": f.message()}
               for f in res.findings]
     if alerts:
@@ -1164,6 +1328,7 @@ def cloudscan_run(_admin: str = Depends(admin_auth)) -> dict[str, Any]:
     if _cloud_status["running"]:
         raise HTTPException(status_code=409, detail="A scan is already running")
     threading.Thread(target=run_cloud_scan, daemon=True, name="opendlp-cloudscan").start()
+    record_admin_action("api-admin-token", "cloudscan_run", "sources=" + ",".join(cloud_sources()))
     return {"started": True, "sources": cloud_sources()}
 
 
@@ -1175,7 +1340,7 @@ class FingerprintIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
 
-def add_fingerprint(fp: FingerprintIn) -> dict[str, Any]:
+def add_fingerprint(fp: FingerprintIn, actor: str) -> dict[str, Any]:
     if not _SHA256_RX.match(fp.sha256):
         raise HTTPException(status_code=422, detail="sha256 must be 64 hex characters")
     with _db_lock:
@@ -1190,10 +1355,11 @@ def add_fingerprint(fp: FingerprintIn) -> dict[str, Any]:
             conn.commit()
         finally:
             conn.close()
+    record_admin_action(actor, "fingerprint_add", f"sha256={fp.sha256.lower()} name=\"{fp.name.strip()[:100]}\"")
     return {"ok": True, "sha256": fp.sha256.lower(), "name": fp.name.strip(), "policyVersion": version}
 
 
-def remove_fingerprint(sha256: str) -> dict[str, Any]:
+def remove_fingerprint(sha256: str, actor: str) -> dict[str, Any]:
     with _db_lock:
         conn = db()
         try:
@@ -1205,6 +1371,7 @@ def remove_fingerprint(sha256: str) -> dict[str, Any]:
             conn.close()
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="Unknown fingerprint")
+    record_admin_action(actor, "fingerprint_remove", f"sha256={sha256.lower()}")
     return {"ok": True}
 
 
@@ -1215,12 +1382,12 @@ def list_fingerprints(_role: str = Depends(viewer_auth)) -> list[dict[str, str]]
 
 @app.post("/api/v1/admin/fingerprints")
 def api_add_fingerprint(fp: FingerprintIn, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
-    return add_fingerprint(fp)
+    return add_fingerprint(fp, "api-admin-token")
 
 
 @app.delete("/api/v1/admin/fingerprints/{sha256}")
 def api_remove_fingerprint(sha256: str, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
-    return remove_fingerprint(sha256)
+    return remove_fingerprint(sha256, "api-admin-token")
 
 
 @app.get("/fingerprints", response_class=HTMLResponse)
@@ -1229,17 +1396,17 @@ def fingerprints_page(request: Request, role: str = Depends(dashboard_auth)) -> 
 
 
 @app.post("/fingerprints")
-def dashboard_add_fingerprint(fp: FingerprintIn, role: str = Depends(dashboard_auth)) -> dict[str, Any]:
+def dashboard_add_fingerprint(fp: FingerprintIn, request: Request, role: str = Depends(dashboard_auth)) -> dict[str, Any]:
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
-    return add_fingerprint(fp)
+    return add_fingerprint(fp, actor_of(request))
 
 
 @app.delete("/fingerprints/{sha256}")
-def dashboard_remove_fingerprint(sha256: str, role: str = Depends(dashboard_auth)) -> dict[str, Any]:
+def dashboard_remove_fingerprint(sha256: str, request: Request, role: str = Depends(dashboard_auth)) -> dict[str, Any]:
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
-    return remove_fingerprint(sha256)
+    return remove_fingerprint(sha256, actor_of(request))
 
 
 def _report_response(month: str | None) -> Response:
@@ -1247,7 +1414,7 @@ def _report_response(month: str | None) -> Response:
         with _db_lock:
             conn = db()
             try:
-                label, pdf = report.build_monthly_report(conn, month, ORG_NAME)
+                label, pdf = report.build_monthly_report(conn, month, ORG_NAME, AUDIT_KEY)
             finally:
                 conn.close()
     except ValueError as exc:
@@ -1291,6 +1458,205 @@ def deploy_page(request: Request, role: str = Depends(dashboard_auth)) -> HTMLRe
             "plain_http": server_url.startswith("http://") and not any(h in server_url for h in ("127.0.0.1", "localhost")),
         },
     )
+
+
+# --------------------------------------------------------------------------- department / group policies
+class GroupAssign(BaseModel):
+    group: str | None = Field(default=None, max_length=64)
+
+
+def list_groups() -> list[dict[str, Any]]:
+    with _db_lock:
+        conn = db()
+        try:
+            rows = conn.execute(
+                "SELECT g.name, g.overlay, g.updated_at, (SELECT COUNT(*) FROM agents a WHERE a.group_name = g.name) AS agents "
+                "FROM group_policies g ORDER BY g.name"
+            ).fetchall()
+        finally:
+            conn.close()
+    return [{"name": r["name"], "overlay": json.loads(r["overlay"]), "updatedAt": r["updated_at"], "agents": r["agents"]} for r in rows]
+
+
+def put_group(name: str, overlay: dict[str, Any], actor: str) -> dict[str, Any]:
+    if not _GROUP_RX.match(name):
+        raise HTTPException(status_code=422, detail="Group name: 1-64 letters, digits, space, '_', '-' or '.'")
+    if "fingerprints" in overlay:
+        raise HTTPException(status_code=422, detail="'fingerprints' is managed by the server registry")
+    if "disableRules" in overlay and not (isinstance(overlay["disableRules"], list)
+                                         and all(isinstance(x, str) for x in overlay["disableRules"])):
+        raise HTTPException(status_code=422, detail="disableRules must be a list of rule ids")
+    base, _ = _read_base_policy()
+    problems = validate_policy(merge_policy(base, overlay))
+    if problems:
+        raise HTTPException(status_code=422, detail=problems[:20])
+    with _db_lock:
+        conn = db()
+        try:
+            conn.execute(
+                "INSERT INTO group_policies(name, overlay, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET overlay = excluded.overlay, updated_at = excluded.updated_at",
+                (name, json.dumps(overlay, ensure_ascii=False), datetime.now(timezone.utc).isoformat()),
+            )
+            version = _bump_fingerprint_version(conn)
+            conn.commit()
+        finally:
+            conn.close()
+    record_admin_action(actor, "group_policy_update", f"group=\"{name}\"")
+    return {"ok": True, "group": name, "policyVersion": version}
+
+
+def delete_group(name: str, actor: str) -> dict[str, Any]:
+    with _db_lock:
+        conn = db()
+        try:
+            cur = conn.execute("DELETE FROM group_policies WHERE name = ?", (name,))
+            conn.execute("UPDATE agents SET group_name = NULL WHERE group_name = ?", (name,))
+            if cur.rowcount:
+                _bump_fingerprint_version(conn)
+            conn.commit()
+        finally:
+            conn.close()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown group")
+    record_admin_action(actor, "group_delete", f"group=\"{name}\"")
+    return {"ok": True}
+
+
+def assign_group(agent_id: str, group: str | None, actor: str) -> dict[str, Any]:
+    group = (group or "").strip() or None
+    with _db_lock:
+        conn = db()
+        try:
+            if group and conn.execute("SELECT 1 FROM group_policies WHERE name = ?", (group,)).fetchone() is None:
+                raise HTTPException(status_code=404, detail="Unknown group; create it first")
+            cur = conn.execute("UPDATE agents SET group_name = ? WHERE agent_id = ?", (group, agent_id))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Unknown agent")
+            version = _bump_fingerprint_version(conn)
+            conn.commit()
+        finally:
+            conn.close()
+    record_admin_action(actor, "agent_group_assign", f"agent={agent_id} group=\"{group or ''}\"")
+    return {"ok": True, "agent_id": agent_id, "group": group, "policyVersion": version}
+
+
+@app.get("/api/v1/admin/groups")
+def api_list_groups(_role: str = Depends(viewer_auth)) -> list[dict[str, Any]]:
+    return list_groups()
+
+
+@app.put("/api/v1/admin/groups/{name}")
+def api_put_group(name: str, overlay: dict[str, Any], _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    return put_group(name, overlay, "api-admin-token")
+
+
+@app.delete("/api/v1/admin/groups/{name}")
+def api_delete_group(name: str, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    return delete_group(name, "api-admin-token")
+
+
+@app.post("/api/v1/admin/agents/{agent_id}/group")
+def api_assign_group(agent_id: str, body: GroupAssign, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    return assign_group(agent_id, body.group, "api-admin-token")
+
+
+@app.get("/api/v1/admin/agents/{agent_id}/effective-policy")
+def api_effective_policy(agent_id: str, _role: str = Depends(viewer_auth)) -> dict[str, Any]:
+    return {"agent_id": agent_id, "group": group_of(agent_id), "policy": effective_policy(agent_id)}
+
+
+@app.post("/agents/{agent_id}/group")
+def dashboard_assign_group(agent_id: str, body: GroupAssign, request: Request,
+                           role: str = Depends(dashboard_auth)) -> dict[str, Any]:
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return assign_group(agent_id, body.group, actor_of(request))
+
+
+# --------------------------------------------------------------------------- audit log integrity and SIEM
+def verify_audit_chain() -> dict[str, Any]:
+    with _db_lock:
+        conn = db()
+        try:
+            return audit.verify(conn, AUDIT_KEY)
+        finally:
+            conn.close()
+
+
+@app.get("/api/v1/admin/audit/verify")
+def api_audit_verify(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
+    return verify_audit_chain()
+
+
+@app.get("/api/v1/admin/siem")
+def api_siem_status(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
+    return {"enabled": _forwarder is not None, "format": SYSLOG_FORMAT, **(_forwarder.status() if _forwarder else {})}
+
+
+# --------------------------------------------------------------------------- single sign-on
+def _redirect_uri(request: Request) -> str:
+    base = PUBLIC_URL or str(request.base_url).rstrip("/")
+    return base + "/auth/callback"
+
+
+def _secure_cookie(request: Request) -> bool:
+    return request.url.scheme == "https" or PUBLIC_URL.startswith("https://")
+
+
+def _safe_next(raw: str | None) -> str:
+    return raw if raw and raw.startswith("/") and not raw.startswith("//") and "\\" not in raw else "/"
+
+
+@app.get("/login", response_model=None)
+def sso_login(request: Request, next: str = "/") -> Response:
+    if _oidc is None:
+        raise HTTPException(status_code=404, detail="Single sign-on is not configured")
+    st = sso.new_login()
+    try:
+        url = _oidc.authorize_url(_redirect_uri(request), st["state"], st["nonce"], st["verifier"])
+    except Exception as exc:  # noqa: BLE001 - provider unreachable / misconfigured
+        raise HTTPException(status_code=502, detail=f"Identity provider error: {exc}") from exc
+    resp = Response(status_code=303, headers={"Location": url})
+    resp.set_cookie(LOGIN_COOKIE, sso.sign({**st, "next": _safe_next(next), "exp": datetime.now(timezone.utc).timestamp() + 600},
+                                            SESSION_SECRET),
+                    max_age=600, httponly=True, secure=_secure_cookie(request), samesite="lax", path="/auth")
+    return resp
+
+
+@app.get("/auth/callback", response_model=None)
+def sso_callback(request: Request, code: str = "", state: str = "", error: str = "") -> Response:
+    if _oidc is None:
+        raise HTTPException(status_code=404, detail="Single sign-on is not configured")
+    login = sso.unsign(request.cookies.get(LOGIN_COOKIE), SESSION_SECRET)
+    if error:
+        raise HTTPException(status_code=401, detail=f"Sign-in was cancelled or refused: {error[:100]}")
+    if not login or not code or not secrets.compare_digest(str(login.get("state", "")), state):
+        raise HTTPException(status_code=400, detail="Sign-in session expired; start again at /login")
+    try:
+        claims = _oidc.verify(_oidc.exchange(code, _redirect_uri(request), str(login["verifier"])), str(login["nonce"]))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=401, detail=f"Sign-in failed: {exc}") from exc
+    email = sso.email_of(claims)
+    role = sso.role_for(email, OIDC_ADMINS, OIDC_VIEWERS)
+    if role is None:
+        record_admin_action(f"sso:{email or 'unknown'}", "login_denied")
+        raise HTTPException(status_code=403, detail=f"{email or 'This account'} is not allowed to use this dashboard")
+    record_admin_action(f"sso:{email}", "login", f"role={role}")
+    resp = Response(status_code=303, headers={"Location": _safe_next(str(login.get("next")))})
+    exp = datetime.now(timezone.utc).timestamp() + SESSION_HOURS * 3600
+    resp.set_cookie(SESSION_COOKIE, sso.sign({"sub": email, "role": role, "exp": exp}, SESSION_SECRET),
+                    max_age=SESSION_HOURS * 3600, httponly=True, secure=_secure_cookie(request), samesite="lax", path="/")
+    resp.delete_cookie(LOGIN_COOKIE, path="/auth")
+    return resp
+
+
+@app.get("/logout", response_class=HTMLResponse)
+def sso_logout() -> HTMLResponse:
+    resp = HTMLResponse("<!doctype html><title>Signed out</title><p>You are signed out of OpenDLP. "
+                        "<a href=\"/login\">Sign in again</a></p>")
+    resp.delete_cookie(SESSION_COOKIE, path="/")
+    return resp
 
 
 @app.get("/health")

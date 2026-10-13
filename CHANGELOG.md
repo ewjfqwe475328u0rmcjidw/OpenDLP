@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.13.0 — browser extension, fingerprints, cloud scanning, fewer false positives
+## 0.13.0 — browser extension, fingerprints, cloud scanning, audit trail, SSO
+- **Tamper-evident audit log**: every event and every administrator action is chained with HMAC-SHA256 (`OPENDLP_AUDIT_KEY`, kept outside the database). Editing, deleting or re-ordering any record is detected (`GET /api/v1/admin/audit/verify`, dashboard tile, monthly report section). Retention purges move a verified anchor, so the chain survives them.
+- **Administrator audit trail**: policy, group, fingerprint and agent changes, cloud scans and dashboard sign-ins are recorded as `ADMIN_ACTION` events with the acting user.
+- **SIEM forwarding**: every event streamed as RFC 5424 syslog in CEF (default) or JSON over UDP, TCP or TLS (`OPENDLP_SYSLOG`) to Splunk, Microsoft Sentinel, QRadar, Wazuh, Graylog or Elastic. Background queue; an unreachable SIEM never slows agents.
+- **Department / group policies**: overlays on the company policy (replace or add rules, `disableRules`, per-group USB / browser / AI settings); assign endpoints from the dashboard or `POST /api/v1/admin/agents/{id}/group`; `GET .../effective-policy` shows the merged result.
+- **Dashboard single sign-on (OpenID Connect)**: Microsoft Entra ID, Google Workspace, Okta, Keycloak, Authentik. Authorization code + PKCE, ID-token signature (RS256/ES256), issuer, audience, expiry and nonce verified; admins and viewers by address or `@domain`. Basic auth remains as a break-glass login.
+- Dashboard write requests now require a same-origin `Origin`/`Referer` header (CSRF protection); scripts should use the bearer-token API.
 - **Browser extension (Chrome / Edge)**: warns about or blocks pasting, dropping and uploading sensitive data to AI chats (ChatGPT, Claude, Gemini, Copilot, ...), personal cloud drives and file-sharing sites; text inside Office/zip files; blocked-upload sites; self-enrolls, verifies the signed policy, reports `BROWSER_*` events; managed configuration for Intune / Group Policy. Tested end-to-end in real Chromium in CI.
 - **File fingerprints**: register confidential files (hashed in the admin's browser, never uploaded); agents and the extension recognise exact copies even when renamed or zipped (`FINGERPRINT_MATCH`, critical).
 - **Zip scanning**: agents and the extension inspect text and Office files inside `.zip` archives.

@@ -39,6 +39,9 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "WEBHOOK_URL", "")
     monkeypatch.setattr(main, "PUBLIC_URL", "")
     monkeypatch.setattr(main, "SMTP_HOST", "")
+    monkeypatch.setattr(main, "AUDIT_KEY", b"audit-key-for-tests")
+    monkeypatch.setattr(main, "_forwarder", None)
+    monkeypatch.setattr(main, "_oidc", None)
     main._token_cache.clear()
     main._notify_last.clear()
     main.POLICY_PATH.write_text(json.dumps({"rules": [], "usb": {"mode": "audit"}}, ensure_ascii=False), encoding="utf-8")
@@ -635,8 +638,12 @@ def test_fingerprint_permissions_and_validation(client):
     assert c.post("/api/v1/admin/fingerprints", headers=admin(), json={"sha256": "z" * 64, "name": "x"}).status_code == 422
     assert c.post("/api/v1/admin/fingerprints", headers=admin(), json={"sha256": "ab", "name": "x"}).status_code == 422
     # dashboard routes: admin can add, viewer cannot
-    assert c.post("/fingerprints", auth=("admin", "dash-pass"), json={"sha256": FP, "name": "a.pdf"}).status_code == 200
-    assert c.post("/fingerprints", auth=("viewer", "view-pass"), json={"sha256": FP, "name": "a.pdf"}).status_code == 403
+    same = {"Origin": "http://testserver"}
+    assert c.post("/fingerprints", auth=("admin", "dash-pass"), json={"sha256": FP, "name": "a.pdf"}).status_code == 403  # no Origin: CSRF
+    assert c.post("/fingerprints", auth=("admin", "dash-pass"), headers={"Origin": "https://evil.example"},
+                  json={"sha256": FP, "name": "a.pdf"}).status_code == 403
+    assert c.post("/fingerprints", auth=("admin", "dash-pass"), headers=same, json={"sha256": FP, "name": "a.pdf"}).status_code == 200
+    assert c.post("/fingerprints", auth=("viewer", "view-pass"), headers=same, json={"sha256": FP, "name": "a.pdf"}).status_code == 403
     page = c.get("/fingerprints", auth=("viewer", "view-pass")).text
     assert FP in page and "Add fingerprints" not in page
     assert "Add fingerprints" in c.get("/fingerprints", auth=("admin", "dash-pass")).text

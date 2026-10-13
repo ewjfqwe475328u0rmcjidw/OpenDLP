@@ -23,7 +23,7 @@ Verify downloads with `SHA256SUMS.txt` from the same release.
 
 > **Verification status:** every change is built and tested automatically on clean Windows VMs — unit tests, a console end-to-end test and a full Windows-service install/detect/recover/uninstall test (see [docs/RELEASE_AUDIT.md](docs/RELEASE_AUDIT.md)). USB devices and the interactive clipboard are not covered by automation yet; reports from real machines are very welcome.
 >
-> **Limitations:** Current features focus on auditing, content detection and event reporting. USB, clipboard, print and browser policy fields do **not** mean reliable OS-level blocking exists in every scenario, and the browser extension is not included in this release. Do not rely on OpenDLP as your only line of defense against data leakage.
+> **Limitations:** Current features focus on auditing, content detection and event reporting. USB, clipboard, print and browser policy fields do **not** mean reliable OS-level blocking exists in every scenario. Do not rely on OpenDLP as your only line of defense against data leakage.
 
 **New here?** Read [docs/QUICKSTART-SMB.md](docs/QUICKSTART-SMB.md) — server + first PC in ~15 minutes. Rolling out to many machines: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Compliance notes: [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
 
@@ -35,6 +35,7 @@ Verify downloads with `SHA256SUMS.txt` from the same release.
 - **File fingerprints:** register confidential files; exact copies are recognised everywhere, even renamed or inside a zip.
 - **Cloud drive scanning (report-only):** Google Workspace and Microsoft 365 files shared with "anyone with the link" that contain sensitive data. See [docs/CLOUD-SCAN.md](docs/CLOUD-SCAN.md).
 - **Optional AI classification** with a model you host yourself. See [docs/AI-CLASSIFICATION.md](docs/AI-CLASSIFICATION.md).
+- **Audit & enterprise integration:** tamper-evident (HMAC-chained) event and admin-action log, SIEM forwarding (syslog CEF/JSON over UDP/TCP/TLS), department/group policies, dashboard single sign-on with Microsoft Entra ID, Google, Okta or any OpenID Connect provider. See [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
 - **macOS / Linux agent:** same detection engine, removable-volume auditing, launchd / systemd service with automatic restart.
 - **Watchdog (Windows):** restarts the service when it stops or its heartbeat goes stale.
 - **Fleet deployment:** silent, checksum-verified, idempotent deploy scripts for Intune, Group Policy, RMM, Jamf, Kandji, SSH and Ansible; a dashboard page generates the commands.
@@ -110,6 +111,9 @@ Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. 
 | `POST /api/v1/admin/notify/test` | Admin token | Send a test alert to webhook / e-mail |
 | `GET/POST /api/v1/admin/fingerprints`, `DELETE …/{sha256}` | viewer / admin | Confidential-file fingerprint registry |
 | `GET /api/v1/admin/cloudscan`, `POST …/cloudscan/run` | viewer / admin | Cloud drive scan status / run now |
+| `GET /api/v1/admin/groups`, `PUT/DELETE …/groups/{name}`, `POST …/agents/{id}/group`, `GET …/agents/{id}/effective-policy` | viewer / admin | Department / group policies |
+| `GET /api/v1/admin/audit/verify` | viewer / admin | Verify the tamper-evident log |
+| `GET /api/v1/admin/siem` | viewer / admin | SIEM forwarding status |
 | `GET /health` | none | Liveness check |
 
 The default policy is `policies/default-policy.json` (override with `OPENDLP_POLICY`). It is validated before being signed. Policies are signed with HMAC-SHA256 using a key derived from the agent's token — a shared-secret prototype design, not asymmetric signing. Use TLS and protect your tokens.

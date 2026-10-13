@@ -36,7 +36,7 @@
 </head>
 <body>
   <h1>OpenDLP Central Dashboard</h1>
-  <p class="muted">UTC: {{ now }} · signed in as <span class="badge">{{ role }}</span>{% if role == "admin" %} · <a href="/deploy" style="color:#7fb2f0">Deploy agents</a>{% endif %} · <a href="/fingerprints" style="color:#7fb2f0">Fingerprints</a> · <a href="/reports/monthly.pdf" style="color:#7fb2f0">Monthly report (PDF)</a></p>
+  <p class="muted">UTC: {{ now }} · signed in as {{ actor }} <span class="badge">{{ role }}</span>{% if sso %} · <a href="/logout" style="color:#7fb2f0">Sign out</a>{% endif %}{% if role == "admin" %} · <a href="/deploy" style="color:#7fb2f0">Deploy agents</a>{% endif %} · <a href="/fingerprints" style="color:#7fb2f0">Fingerprints</a> · <a href="/reports/monthly.pdf" style="color:#7fb2f0">Monthly report (PDF)</a></p>
 
   <div class="tiles">
     <div class="tile"><div class="n">{{ online }}<span class="muted"> / {{ agents|length }}</span></div><div class="l">Agents online</div></div>
@@ -44,6 +44,7 @@
     <div class="tile"><div class="n high">{{ sev.high }}</div><div class="l">High alerts (24h)</div></div>
     <div class="tile"><div class="n med">{{ sev.medium }}</div><div class="l">Medium alerts (24h)</div></div>
     <div class="tile"><div class="n">{{ sev.low }}</div><div class="l">Low alerts (24h)</div></div>
+    <div class="tile"><div class="n {% if audit.ok %}ok{% else %}crit{% endif %}">{% if audit.ok %}Intact{% else %}TAMPERED{% endif %}</div><div class="l">Audit log{% if audit.ok %} · {{ audit.checked }} events verified{% else %} · first bad event #{{ audit.firstBadId }} ({{ audit.reason }}){% endif %}</div></div>
   </div>
 
 
@@ -78,18 +79,19 @@
   <div class="card">
     <h2>Agents</h2>
     <table>
-      <tr><th>Agent</th><th>Host</th><th>Version</th><th>Status</th><th>Last Seen</th><th>Last Event</th></tr>
+      <tr><th>Agent</th><th>Host</th><th>Group</th><th>Version</th><th>Status</th><th>Last Seen</th><th>Last Event</th></tr>
       {% for a in agents %}
       <tr>
         <td>{{ a["display_name"] or a["agent_id"] }}</td>
         <td>{{ a["host"] or "" }}</td>
+        <td>{% if role == "admin" and groups %}<select class="grp" data-agent="{{ a['agent_id'] }}"><option value="">(company default)</option>{% for g in groups %}<option{% if g == a["group_name"] %} selected{% endif %}>{{ g }}</option>{% endfor %}</select>{% else %}{{ a["group_name"] or "default" }}{% endif %}</td>
         <td>{{ a["agent_version"] or "" }}</td>
         <td class="{% if a['status']=='online' %}ok{% elif a['status']=='revoked' %}alert{% else %}warn{% endif %}">{{ a["status"] }}</td>
         <td>{{ a["last_seen"] }}</td>
         <td>{{ a["last_event"] }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6">No agents yet</td></tr>
+      <tr><td colspan="7">No agents yet</td></tr>
       {% endfor %}
     </table>
   </div>
@@ -121,5 +123,15 @@
       {% endfor %}
     </table>
   </div>
+<script>
+document.querySelectorAll("select.grp").forEach(function (sel) {
+  sel.addEventListener("change", function () {
+    fetch("/agents/" + encodeURIComponent(sel.dataset.agent) + "/group", {
+      method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+      body: JSON.stringify({group: sel.value || null})
+    }).then(function (r) { sel.style.borderColor = r.ok ? "#6ee7a0" : "#ff7b7b"; });
+  });
+});
+</script>
 </body>
 </html>

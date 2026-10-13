@@ -271,6 +271,21 @@ def render_pdf(d: dict[str, Any], org_name: str, generated_at: datetime | None =
     else:
         story.append(Paragraph("All registered endpoints reported within the last 7 days.", st["body"]))
 
+    if d.get("audit") is not None:
+        a = d["audit"]
+        story.append(Paragraph("Audit log integrity", st["h2"]))
+        if a.get("ok"):
+            how = "keyed HMAC-SHA256 chain" if a.get("keyed") else "SHA-256 chain (no OPENDLP_AUDIT_KEY set)"
+            story.append(Paragraph(
+                f'<font color="#1f9d55"><b>Verified.</b></font> All {a.get("checked", 0)} stored events and administrator '
+                f"actions form an unbroken {how}; no record has been edited or deleted outside the retention policy. "
+                f"Chain head: <font face=\"Courier\" size=\"7\">{_esc(str(a.get('head', '')))}</font>", st["body"]))
+        else:
+            story.append(Paragraph(
+                f'<font color="#d64545"><b>Integrity check FAILED</b></font> at event #{a.get("firstBadId")} '
+                f"({_esc(str(a.get('reason')))}). Records may have been altered; investigate before relying on this report.",
+                st["body"]))
+
     story += [
         Spacer(1, 14),
         Paragraph(
@@ -292,8 +307,13 @@ def render_pdf(d: dict[str, Any], org_name: str, generated_at: datetime | None =
     return buf.getvalue()
 
 
-def build_monthly_report(conn: sqlite3.Connection, month: str | None, org_name: str) -> tuple[str, bytes]:
+def build_monthly_report(conn: sqlite3.Connection, month: str | None, org_name: str,
+                         audit_key: bytes | None = None) -> tuple[str, bytes]:
     d = collect(conn, month)
+    if audit_key is not None:
+        import audit
+
+        d["audit"] = audit.verify(conn, audit_key)
     return d["month"], render_pdf(d, org_name)
 
 
@@ -302,6 +322,7 @@ def maybe_send_monthly(
     now: datetime,
     org_name: str,
     send: Callable[[str, str, bytes, str], None],
+    audit_key: bytes | None = None,
 ) -> str | None:
     """On or after the 1st of a month, e-mail last month's report once. Returns the month sent, if any."""
     conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
@@ -309,7 +330,7 @@ def maybe_send_monthly(
     row = conn.execute("SELECT value FROM meta WHERE key = 'last_report_month'").fetchone()
     if row is not None and row[0] >= target:
         return None
-    month, pdf = build_monthly_report(conn, target, org_name)
+    month, pdf = build_monthly_report(conn, target, org_name, audit_key)
     send(f"OpenDLP data protection report {month}",
          f"Attached: the OpenDLP data protection report for {month} ({org_name}).",
          pdf, f"opendlp-report-{month}.pdf")
