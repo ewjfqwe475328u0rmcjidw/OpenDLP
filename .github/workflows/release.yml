@@ -61,8 +61,21 @@ jobs:
           name: ${{ matrix.name }}
           path: dist/*
 
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package browser extension
+        run: |
+          mkdir -p dist
+          cd browser-extension/src && zip -qr "../../dist/OpenDLP-browser-extension-${{ github.ref_name }}.zip" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: dist/*
+
   publish:
-    needs: [windows, unix]
+    needs: [windows, unix, extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -81,6 +94,8 @@ jobs:
             **macOS / Linux** (`OpenDLP-macos-arm64|macos-x64|linux-x64-*.tar.gz`): extract, then
             `sudo ./opendlp-agent/install.sh --server-url https://your-server --enrollment-code "..."`
             (macOS: grant the agent Full Disk Access, see docs/DEPLOYMENT.md).
+
+            **Browser extension** (`OpenDLP-browser-extension-*.zip`, Chrome / Edge): blocks pasting and uploading sensitive data to AI chats and cloud drives - see browser-extension/README.md.
 
             **Many machines at once:** `Deploy-OpenDLP.ps1` (GPO / Intune / RMM) and `deploy-opendlp.sh` (Jamf / Kandji / MDM / SSH) - see docs/DEPLOYMENT.md.
 

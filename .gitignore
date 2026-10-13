@@ -22,3 +22,7 @@ logs/
 agent/appsettings.json
 agent/agent.config.json
 .pytest_cache/
+
+# Node
+node_modules/
+browser-extension/*.zip

@@ -1,0 +1,157 @@
+{
+  "rules": [
+    {
+      "id": "API-KEY",
+      "name": "API key / access token",
+      "type": "builtin",
+      "detector": "api_key",
+      "minMatches": 1,
+      "severity": "critical",
+      "action": "alert",
+      "exclude": [
+        "(?i)example",
+        "(?i)dummy",
+        "(?i)x{8,}",
+        "(?i)your[_-]?api[_-]?key"
+      ]
+    },
+    {
+      "id": "PRIVATE-KEY",
+      "name": "Private key material",
+      "type": "builtin",
+      "detector": "private_key",
+      "minMatches": 1,
+      "severity": "critical",
+      "action": "alert"
+    },
+    {
+      "id": "CREDIT-CARD",
+      "name": "Payment card number (Luhn-validated)",
+      "type": "builtin",
+      "detector": "credit_card",
+      "minMatches": 1,
+      "severity": "high",
+      "action": "alert"
+    },
+    {
+      "id": "IBAN",
+      "name": "International bank account number",
+      "type": "builtin",
+      "detector": "iban",
+      "minMatches": 1,
+      "severity": "high",
+      "action": "alert"
+    },
+    {
+      "id": "US-SSN",
+      "name": "US Social Security number",
+      "type": "builtin",
+      "detector": "us_ssn",
+      "minMatches": 1,
+      "severity": "high",
+      "action": "alert",
+      "requireContext": true
+    },
+    {
+      "id": "PASSPORT",
+      "name": "Passport number (multilingual context)",
+      "type": "builtin",
+      "detector": "passport",
+      "minMatches": 1,
+      "severity": "high",
+      "action": "alert"
+    },
+    {
+      "id": "TW-NID",
+      "name": "Taiwan national ID (checksum-validated)",
+      "type": "builtin",
+      "detector": "tw_national_id",
+      "minMatches": 1,
+      "severity": "high",
+      "action": "alert"
+    },
+    {
+      "id": "TW-MOBILE-BULK",
+      "name": "Bulk Taiwan mobile numbers",
+      "type": "builtin",
+      "detector": "tw_mobile",
+      "minMatches": 5,
+      "severity": "medium",
+      "action": "log"
+    },
+    {
+      "id": "EMAIL-BULK",
+      "name": "Bulk e-mail addresses (customer list)",
+      "type": "builtin",
+      "detector": "email",
+      "minMatches": 20,
+      "severity": "medium",
+      "action": "log"
+    },
+    {
+      "id": "KW-CONFIDENTIAL",
+      "name": "Confidentiality markers (multilingual)",
+      "type": "keywords",
+      "keywords": [
+        "confidential",
+        "internal use only",
+        "do not distribute",
+        "vertraulich",
+        "confidentiel",
+        "confidencial",
+        "riservato",
+        "機密",
+        "内部资料",
+        "社外秘",
+        "기밀",
+        "限閱",
+        "內部使用"
+      ],
+      "minMatches": 1,
+      "severity": "medium",
+      "action": "alert"
+    }
+  ],
+  "usb": {
+    "mode": "audit",
+    "allowSerials": []
+  },
+  "clipboard": {
+    "enabled": true,
+    "action": "alert"
+  },
+  "print": {
+    "enabled": true
+  },
+  "browser": {
+    "mode": "warn",
+    "monitoredDomains": [
+      "chatgpt.com",
+      "chat.openai.com",
+      "claude.ai",
+      "gemini.google.com",
+      "copilot.microsoft.com",
+      "perplexity.ai",
+      "deepseek.com",
+      "drive.google.com",
+      "docs.google.com",
+      "dropbox.com",
+      "onedrive.live.com",
+      "box.com",
+      "wetransfer.com",
+      "mega.nz",
+      "pastebin.com",
+      "gist.github.com",
+      "web.whatsapp.com",
+      "web.telegram.org"
+    ],
+    "blockedUploadDomains": []
+  },
+  "ai": {
+    "enabled": false,
+    "endpoint": "",
+    "model": "llama3.2:3b",
+    "maxChars": 4000,
+    "action": "alert"
+  }
+}

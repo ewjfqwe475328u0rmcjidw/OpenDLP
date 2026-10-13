@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "serverUrl": { "type": "string", "description": "OpenDLP server URL, e.g. https://dlp.example.com" },
+    "enrollmentCode": { "type": "string", "description": "OPENDLP_ENROLL_CODE from the server" },
+    "agentId": { "type": "string", "description": "Optional identifier; default browser-<random>" },
+    "displayName": { "type": "string", "description": "Optional label shown on the dashboard" },
+    "policySigningPublicKey": { "type": "string", "description": "Optional ECDSA P-256 public key (PEM) the server signs policies with" }
+  }
+}

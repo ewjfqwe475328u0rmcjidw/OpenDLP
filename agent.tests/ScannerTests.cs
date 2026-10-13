@@ -1,4 +1,5 @@
 // OpenDLP Agent tests - GPL-3.0-only
+using System.IO.Compression;
 using System.Text.Json;
 using OpenDLP.Agent;
 using Xunit;

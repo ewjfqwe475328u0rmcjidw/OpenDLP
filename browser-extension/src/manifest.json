@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "OpenDLP",
+  "short_name": "OpenDLP",
+  "version": "0.13.0",
+  "description": "Open-source data loss prevention: warns about or blocks pasting and uploading sensitive data to AI chats, cloud drives and file-sharing sites.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["detectors.js", "content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "storage": { "managed_schema": "managed_schema.json" },
+  "options_ui": { "page": "options.html", "open_in_tab": false },
+  "icons": { "128": "icon128.png", "48": "icon48.png", "16": "icon16.png" }
+}
