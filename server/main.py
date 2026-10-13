@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -145,6 +146,16 @@ def init_db() -> None:
                 last_seen TEXT NOT NULL,
                 last_event TEXT
             );
+            """
+        )
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS fingerprints (
+                sha256 TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                added_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
             """
         )
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(agents)")}
@@ -505,8 +516,6 @@ BUILTIN_DETECTORS = {"tw_national_id", "credit_card", "tw_mobile", "email", "tw_
 
 def validate_policy(obj: Any) -> list[str]:
     """Return a list of problems; empty means the policy is acceptable to ship to agents."""
-    import re
-
     errs: list[str] = []
     if not isinstance(obj, dict):
         return ["policy must be a JSON object"]
@@ -546,9 +555,29 @@ def validate_policy(obj: Any) -> list[str]:
                 errs.append(f"{where}.pattern is not a valid regex: {exc}")
             if not r.get("pattern"):
                 errs.append(f"{where}.pattern is required for regex rules")
+        for x in r.get("exclude", []) or []:
+            try:
+                re.compile(str(x))
+            except re.error as exc:
+                errs.append(f"{where}.exclude pattern {x!r} is not a valid regex: {exc}")
+        if not isinstance(r.get("contextWords", []), list):
+            errs.append(f"{where}.contextWords must be a list")
+        if not isinstance(r.get("requireContext", False), bool):
+            errs.append(f"{where}.requireContext must be true or false")
     usb_mode = (obj.get("usb") or {}).get("mode", "audit")
     if usb_mode not in {"audit", "block"}:
         errs.append("usb.mode must be 'audit' or 'block'")
+    browser = obj.get("browser") or {}
+    if browser.get("mode", "audit") not in {"audit", "warn", "block"}:
+        errs.append("browser.mode must be 'audit', 'warn' or 'block'")
+    for key in ("monitoredDomains", "blockedUploadDomains"):
+        if not isinstance(browser.get(key, []), list):
+            errs.append(f"browser.{key} must be a list of domains")
+    ai = obj.get("ai") or {}
+    if ai.get("enabled") and not str(ai.get("endpoint", "")).startswith(("http://", "https://")):
+        errs.append("ai.endpoint must be an http(s) URL when ai.enabled is true")
+    if "fingerprints" in obj:
+        errs.append("'fingerprints' is managed by the server registry (/api/v1/admin/fingerprints); remove it from the policy file")
     return errs
 
 
@@ -580,6 +609,28 @@ def asymmetric_sign(data: bytes) -> str | None:
     return base64.b64encode(key.sign(data, ec.ECDSA(hashes.SHA256()))).decode("ascii")
 
 
+def fingerprint_registry() -> tuple[list[dict[str, str]], int]:
+    """Registered confidential-file fingerprints and the version (epoch seconds) of the last change."""
+    with _db_lock:
+        conn = db()
+        try:
+            rows = conn.execute("SELECT sha256, name FROM fingerprints ORDER BY added_at").fetchall()
+            v = conn.execute("SELECT value FROM meta WHERE key = 'fingerprints_version'").fetchone()
+        finally:
+            conn.close()
+    return [{"sha256": r["sha256"], "name": r["name"]} for r in rows], int(v["value"]) if v else 0
+
+
+def _bump_fingerprint_version(conn: sqlite3.Connection) -> int:
+    """Strictly increasing so agents always see a newer policy version after a registry change."""
+    prev = conn.execute("SELECT value FROM meta WHERE key = 'fingerprints_version'").fetchone()
+    policy_mtime = int(POLICY_PATH.stat().st_mtime) if POLICY_PATH.exists() else 0
+    new = max(int(datetime.now(timezone.utc).timestamp()), (int(prev["value"]) if prev else 0) + 1, policy_mtime + 1)
+    conn.execute("INSERT INTO meta(key, value) VALUES ('fingerprints_version', ?) "
+                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(new),))
+    return new
+
+
 def policy_envelope(agent_id: str) -> dict[str, Any]:
     try:
         policy_obj = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
@@ -596,6 +647,9 @@ def policy_envelope(agent_id: str) -> dict[str, Any]:
     # The agent verifies HMAC-SHA256 over this exact JSON string. The key derivation
     # mirrors AgentConfig.PolicyVerifyKey(); this is a shared-secret design, not
     # asymmetric signing. Use TLS and protect the token in any real deployment.
+    fps, fp_version = fingerprint_registry()
+    policy_obj["fingerprints"] = fps
+    mtime = max(mtime, fp_version)
     policy_json = json.dumps(policy_obj, ensure_ascii=False, separators=(",", ":"))
     verify_key = hashlib.sha256(signing_secret_for_agent(agent_id).encode("utf-8")).hexdigest().encode("utf-8")
     sig = hmac.new(verify_key, policy_json.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -836,7 +890,8 @@ def admin_get_policy(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
         mtime = int(POLICY_PATH.stat().st_mtime)
     except (OSError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=500, detail="Policy file is missing or invalid") from exc
-    return {"version": POLICY_VERSION if POLICY_VERSION is not None else mtime, "policy": obj}
+    _, fp_version = fingerprint_registry()
+    return {"version": POLICY_VERSION if POLICY_VERSION is not None else max(mtime, fp_version), "policy": obj}
 
 
 @app.put("/api/v1/admin/policy")
@@ -999,6 +1054,81 @@ def dashboard(
             ],
         },
     )
+
+
+_SHA256_RX = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+class FingerprintIn(BaseModel):
+    sha256: str = Field(min_length=64, max_length=64)
+    name: str = Field(min_length=1, max_length=200)
+
+
+def add_fingerprint(fp: FingerprintIn) -> dict[str, Any]:
+    if not _SHA256_RX.match(fp.sha256):
+        raise HTTPException(status_code=422, detail="sha256 must be 64 hex characters")
+    with _db_lock:
+        conn = db()
+        try:
+            conn.execute(
+                "INSERT INTO fingerprints(sha256, name, added_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(sha256) DO UPDATE SET name = excluded.name",
+                (fp.sha256.lower(), fp.name.strip(), datetime.now(timezone.utc).isoformat()),
+            )
+            version = _bump_fingerprint_version(conn)
+            conn.commit()
+        finally:
+            conn.close()
+    return {"ok": True, "sha256": fp.sha256.lower(), "name": fp.name.strip(), "policyVersion": version}
+
+
+def remove_fingerprint(sha256: str) -> dict[str, Any]:
+    with _db_lock:
+        conn = db()
+        try:
+            cur = conn.execute("DELETE FROM fingerprints WHERE sha256 = ?", (sha256.lower(),))
+            if cur.rowcount:
+                _bump_fingerprint_version(conn)
+            conn.commit()
+        finally:
+            conn.close()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Unknown fingerprint")
+    return {"ok": True}
+
+
+@app.get("/api/v1/admin/fingerprints")
+def list_fingerprints(_role: str = Depends(viewer_auth)) -> list[dict[str, str]]:
+    return fingerprint_registry()[0]
+
+
+@app.post("/api/v1/admin/fingerprints")
+def api_add_fingerprint(fp: FingerprintIn, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    return add_fingerprint(fp)
+
+
+@app.delete("/api/v1/admin/fingerprints/{sha256}")
+def api_remove_fingerprint(sha256: str, _admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    return remove_fingerprint(sha256)
+
+
+@app.get("/fingerprints", response_class=HTMLResponse)
+def fingerprints_page(request: Request, role: str = Depends(dashboard_auth)) -> HTMLResponse:
+    return templates.TemplateResponse(request, "fingerprints.html", {"items": fingerprint_registry()[0], "role": role})
+
+
+@app.post("/fingerprints")
+def dashboard_add_fingerprint(fp: FingerprintIn, role: str = Depends(dashboard_auth)) -> dict[str, Any]:
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return add_fingerprint(fp)
+
+
+@app.delete("/fingerprints/{sha256}")
+def dashboard_remove_fingerprint(sha256: str, role: str = Depends(dashboard_auth)) -> dict[str, Any]:
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return remove_fingerprint(sha256)
 
 
 def _report_response(month: str | None) -> Response:

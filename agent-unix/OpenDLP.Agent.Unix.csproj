@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <Compile Include="..\agent\AgentConfig.cs" Link="shared\AgentConfig.cs" />
+    <Compile Include="..\agent\AiClassifier.cs" Link="shared\AiClassifier.cs" />
     <Compile Include="..\agent\AgentVersion.cs" Link="shared\AgentVersion.cs" />
     <Compile Include="..\agent\Enrollment.cs" Link="shared\Enrollment.cs" />
     <Compile Include="..\agent\FileMonitor.cs" Link="shared\FileMonitor.cs" />

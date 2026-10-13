@@ -7,7 +7,13 @@
       "detector": "api_key",
       "minMatches": 1,
       "severity": "critical",
-      "action": "alert"
+      "action": "alert",
+      "exclude": [
+        "(?i)example",
+        "(?i)dummy",
+        "(?i)x{8,}",
+        "(?i)your[_-]?api[_-]?key"
+      ]
     },
     {
       "id": "PRIVATE-KEY",
@@ -43,7 +49,8 @@
       "detector": "us_ssn",
       "minMatches": 1,
       "severity": "high",
-      "action": "alert"
+      "action": "alert",
+      "requireContext": true
     },
     {
       "id": "PASSPORT",
@@ -117,7 +124,34 @@
     "enabled": true
   },
   "browser": {
-    "mode": "audit",
+    "mode": "warn",
+    "monitoredDomains": [
+      "chatgpt.com",
+      "chat.openai.com",
+      "claude.ai",
+      "gemini.google.com",
+      "copilot.microsoft.com",
+      "perplexity.ai",
+      "deepseek.com",
+      "drive.google.com",
+      "docs.google.com",
+      "dropbox.com",
+      "onedrive.live.com",
+      "box.com",
+      "wetransfer.com",
+      "mega.nz",
+      "pastebin.com",
+      "gist.github.com",
+      "web.whatsapp.com",
+      "web.telegram.org"
+    ],
     "blockedUploadDomains": []
+  },
+  "ai": {
+    "enabled": false,
+    "endpoint": "",
+    "model": "llama3.2:3b",
+    "maxChars": 4000,
+    "action": "alert"
   }
 }

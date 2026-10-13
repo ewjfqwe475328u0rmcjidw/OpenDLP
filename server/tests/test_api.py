@@ -589,3 +589,67 @@ def test_month_bounds():
     s, e, _ = report.month_bounds("2026-12")
     assert (e.year, e.month) == (2027, 1)
     assert report.previous_month(datetime(2026, 1, 1, tzinfo=timezone.utc)) == "2025-12"
+
+
+# ---------------------------------------------------------------- shared detector vectors (Python port)
+
+def test_python_detectors_match_shared_vectors():
+    import detectors as D
+    from pathlib import Path
+    v = json.loads((Path(__file__).resolve().parents[2] / "tests" / "vectors" / "detectors.json").read_text(encoding="utf-8"))
+    assert all(D.is_valid_card(s) == e for s, e in v["luhn"])
+    assert all(D.is_valid_tw_id(s) == e for s, e in v["tw_national_id"])
+    assert all(D.is_valid_iban(s) == e for s, e in v["iban"])
+    for c in v["scan"]:
+        got = {h.rule_id: h.count for h in D.scan(c["rules"], c["text"])}
+        assert got == c["expect"], c["name"]
+
+
+# ---------------------------------------------------------------- fingerprints
+
+FP = "a" * 64
+
+
+def test_fingerprints_are_merged_into_signed_policy_and_bump_version(client, monkeypatch):
+    c, token = client
+    monkeypatch.setattr(main, "POLICY_VERSION", None)
+    v1 = c.get("/api/v1/policy?version=0", headers=headers(token)).json()["version"]
+    r = c.post("/api/v1/admin/fingerprints", headers=admin(), json={"sha256": FP.upper(), "name": "Q3 board deck.pptx"})
+    assert r.status_code == 200 and r.json()["sha256"] == FP
+    env = c.get(f"/api/v1/policy?version={v1}", headers=headers(token))
+    assert env.status_code == 200 and env.json()["version"] > v1
+    pol = json.loads(env.json()["policyJson"])
+    assert pol["fingerprints"] == [{"sha256": FP, "name": "Q3 board deck.pptx"}]
+    key = hashlib.sha256(token.encode()).hexdigest().encode()
+    assert hmac.compare_digest(env.json()["sig"], hmac.new(key, env.json()["policyJson"].encode(), hashlib.sha256).hexdigest())
+    v2 = env.json()["version"]
+    assert c.delete(f"/api/v1/admin/fingerprints/{FP}", headers=admin()).status_code == 200
+    v3 = c.get(f"/api/v1/policy?version={v2}", headers=headers(token)).json()["version"]
+    assert v3 > v2
+    assert c.delete(f"/api/v1/admin/fingerprints/{FP}", headers=admin()).status_code == 404
+
+
+def test_fingerprint_permissions_and_validation(client):
+    c, token = client
+    assert c.post("/api/v1/admin/fingerprints", headers=viewer(), json={"sha256": FP, "name": "x"}).status_code == 403
+    assert c.post("/api/v1/admin/fingerprints", headers=admin(), json={"sha256": "z" * 64, "name": "x"}).status_code == 422
+    assert c.post("/api/v1/admin/fingerprints", headers=admin(), json={"sha256": "ab", "name": "x"}).status_code == 422
+    # dashboard routes: admin can add, viewer cannot
+    assert c.post("/fingerprints", auth=("admin", "dash-pass"), json={"sha256": FP, "name": "a.pdf"}).status_code == 200
+    assert c.post("/fingerprints", auth=("viewer", "view-pass"), json={"sha256": FP, "name": "a.pdf"}).status_code == 403
+    page = c.get("/fingerprints", auth=("viewer", "view-pass")).text
+    assert FP in page and "Add fingerprints" not in page
+    assert "Add fingerprints" in c.get("/fingerprints", auth=("admin", "dash-pass")).text
+    assert c.get("/api/v1/admin/fingerprints", headers=viewer()).json() == [{"sha256": FP, "name": "a.pdf"}]
+
+
+def test_policy_validation_new_fields():
+    ok = {"rules": [{"id": "S", "type": "builtin", "detector": "us_ssn", "requireContext": True,
+                     "contextWords": ["ssn"], "exclude": ["(?i)example"]}],
+          "browser": {"mode": "block", "monitoredDomains": ["chatgpt.com"]}, "ai": {"enabled": False}}
+    assert main.validate_policy(ok) == []
+    bad = {"rules": [{"id": "S", "type": "builtin", "detector": "us_ssn", "requireContext": "yes", "exclude": ["("]}],
+           "browser": {"mode": "nuke"}, "ai": {"enabled": True, "endpoint": "ollama"}, "fingerprints": []}
+    errs = " | ".join(main.validate_policy(bad))
+    for frag in ("requireContext", "exclude pattern", "browser.mode", "ai.endpoint", "fingerprints"):
+        assert frag in errs

@@ -233,3 +233,144 @@ public class EnrollmentTests
         Assert.Null(Enrollment.LoadToken(path + ".missing"));
     }
 }
+
+public class SharedVectorTests
+{
+    private static JsonElement Vectors()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "vectors", "detectors.json");
+        return JsonDocument.Parse(File.ReadAllText(path)).RootElement;
+    }
+
+    [Fact]
+    public void ValidatorsMatchSharedVectors()
+    {
+        var v = Vectors();
+        foreach (var c in v.GetProperty("luhn").EnumerateArray())
+            Assert.True(ContentScanner.IsValidCard(c[0].GetString()!) == c[1].GetBoolean(), $"luhn {c[0]}");
+        foreach (var c in v.GetProperty("tw_national_id").EnumerateArray())
+            Assert.True(ContentScanner.IsValidTwNationalId(c[0].GetString()!) == c[1].GetBoolean(), $"twid {c[0]}");
+        foreach (var c in v.GetProperty("iban").EnumerateArray())
+            Assert.True(ContentScanner.IsValidIban(c[0].GetString()!) == c[1].GetBoolean(), $"iban {c[0]}");
+    }
+
+    [Fact]
+    public void ScannerMatchesSharedVectors()
+    {
+        foreach (var c in Vectors().GetProperty("scan").EnumerateArray())
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"));
+            var store = new PolicyStore(Path.Combine(dir, "p.json"), Path.Combine(dir, "none.json"));
+            var policyJson = "{\"rules\":" + c.GetProperty("rules").GetRawText() + "}";
+            Assert.True(store.Apply(new PolicyEnvelope { Version = 1, PolicyJson = policyJson, Sig = "x" }));
+            var hits = new ContentScanner(store).Scan(c.GetProperty("text").GetString()!)
+                .ToDictionary(h => h.RuleId, h => h.Count);
+            var expect = c.GetProperty("expect").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetInt32());
+            Assert.True(expect.Count == hits.Count && expect.All(e => hits.TryGetValue(e.Key, out var n) && n == e.Value),
+                $"{c.GetProperty("name").GetString()}: expected {JsonSerializer.Serialize(expect)} got {JsonSerializer.Serialize(hits)}");
+        }
+    }
+}
+
+public class ZipAndFingerprintTests
+{
+    private static string TempDir()
+    {
+        var d = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(d);
+        return d;
+    }
+
+    [Fact]
+    public void ZipContentsAreScannedIncludingNestedOffice()
+    {
+        var dir = TempDir();
+        var docx = Path.Combine(dir, "inner.docx");
+        using (var z = System.IO.Compression.ZipFile.Open(docx, System.IO.Compression.ZipArchiveMode.Create))
+            using (var w = new StreamWriter(z.CreateEntry("word/document.xml").Open()))
+                w.Write("<w:t>IBAN GB82 WEST 1234 5698 7654 32</w:t>");
+        var zip = Path.Combine(dir, "bundle.zip");
+        using (var z = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            using (var w = new StreamWriter(z.CreateEntry("notes/customers.csv").Open())) w.Write("id,card\n1,4111 1111 1111 1111");
+            z.CreateEntryFromFile(docx, "docs/inner.docx");
+        }
+        Assert.True(TextExtractor.IsSupported(zip));
+        var text = TextExtractor.Extract(zip, 1_000_000)!;
+        Assert.Contains("4111 1111 1111 1111", text);
+        Assert.Contains("GB82 WEST 1234 5698 7654 32", text);
+    }
+
+    [Fact]
+    public void HashesCoverFileAndZipEntries()
+    {
+        var dir = TempDir();
+        var secret = Path.Combine(dir, "plan.txt");
+        File.WriteAllText(secret, "merger plan");
+        var expected = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(secret))).ToLowerInvariant();
+        var zip = Path.Combine(dir, "renamed.zip");
+        using (var z = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            z.CreateEntryFromFile(secret, "totally-harmless.txt");
+
+        Assert.Contains(TextExtractor.Hashes(secret), h => h.Sha256 == expected);
+        var inZip = TextExtractor.Hashes(zip).ToList();
+        Assert.Contains(inZip, h => h.Sha256 == expected && h.Name == "totally-harmless.txt");
+    }
+
+    [Fact]
+    public void ContextWindowIsSymmetric()
+    {
+        var text = new string('x', 100) + "4111" + new string('y', 100);
+        Assert.False(ContentScanner.HasContext(text, 100, 4, new[] { "card" }));
+        Assert.True(ContentScanner.HasContext("card " + text, 105, 4, new[] { "card" }) == false);
+        Assert.True(ContentScanner.HasContext("Card: 4111", 6, 4, new[] { "card" }));
+    }
+}
+
+public class AiClassifierTests
+{
+    private sealed class FakeHandler : HttpMessageHandler
+    {
+        public string Reply = "";
+        public string LastBody = "";
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            LastBody = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(Reply) };
+        }
+    }
+
+    [Fact]
+    public async Task ClassifiesViaOllamaApi()
+    {
+        var h = new FakeHandler { Reply = JsonSerializer.Serialize(new { response = "{\"label\":\"confidential\",\"reason\":\"unreleased Q3 revenue\"}" }) };
+        using var ai = new AiClassifier(h);
+        var p = new AiPolicy { Enabled = true, Endpoint = "http://ollama.local:11434", Model = "llama3.2:3b", MaxChars = 300 };
+        var r = await ai.ClassifyAsync(p, new string('a', 1000) + "SECRET-TAIL", CancellationToken.None);
+        Assert.Equal("confidential", r!.Value.Label);
+        Assert.Contains("llama3.2:3b", h.LastBody);
+        Assert.DoesNotContain("SECRET-TAIL", h.LastBody);   // only the first MaxChars are sent
+    }
+
+    [Fact]
+    public async Task DisabledOrGarbageMeansNoClassification()
+    {
+        var h = new FakeHandler { Reply = "{\"response\":\"not json at all\"}" };
+        using var ai = new AiClassifier(h);
+        Assert.Null(await ai.ClassifyAsync(new AiPolicy { Enabled = false, Endpoint = "http://x" }, "text", CancellationToken.None));
+        Assert.Null(await ai.ClassifyAsync(new AiPolicy { Enabled = true, Endpoint = "http://x" }, "text", CancellationToken.None));
+        Assert.Null(AiClassifier.Parse("{\"label\":\"top-secret\"}"));
+        Assert.Equal("internal", AiClassifier.Parse("{\"label\":\"Internal\",\"reason\":\"memo\"}")!.Value.Label);
+    }
+
+    [Fact]
+    public async Task RateLimited()
+    {
+        var h = new FakeHandler { Reply = JsonSerializer.Serialize(new { response = "{\"label\":\"public\"}" }) };
+        using var ai = new AiClassifier(h) { MaxCallsPerMinute = 2 };
+        var p = new AiPolicy { Enabled = true, Endpoint = "http://x", Model = "m" };
+        Assert.NotNull(await ai.ClassifyAsync(p, "a", CancellationToken.None));
+        Assert.NotNull(await ai.ClassifyAsync(p, "b", CancellationToken.None));
+        Assert.Null(await ai.ClassifyAsync(p, "c", CancellationToken.None));
+    }
+}

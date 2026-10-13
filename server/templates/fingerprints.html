@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenDLP Fingerprints</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 24px; background: #0b1220; color: #e5eefc; max-width: 1000px; }
+    a { color: #7fb2f0; }
+    h1, h2 { margin: 0 0 12px; }
+    .card { background: #121a2b; border: 1px solid #243049; border-radius: 12px; padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+    .muted { color: #93a4c3; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #243049; padding: 8px; text-align: left; font-size: 14px; }
+    code { font-size: 12px; color: #c9d6ee; word-break: break-all; }
+    button, input[type=file] { background: #1d2a44; color: #e5eefc; border: 1px solid #243049; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+    #status { margin-top: 10px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <p class="muted"><a href="/">&larr; Dashboard</a></p>
+  <h1>Confidential file fingerprints</h1>
+  <p class="muted">Agents and the browser extension raise a <b>critical</b> alert (and the extension blocks the upload, in block mode) when an exact copy of one of these files appears - even renamed or inside a .zip. Only the SHA-256 hash is stored and sent to agents, never the file. Edited copies have a different hash: use content rules for those.</p>
+
+  {% if role == "admin" %}
+  <div class="card">
+    <h2>Add files</h2>
+    <p class="muted">Files are hashed <b>in this browser</b>; they are not uploaded.</p>
+    <input type="file" id="files" multiple />
+    <button id="add">Add fingerprints</button>
+    <div id="status" class="muted"></div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Registered ({{ items|length }})</h2>
+    <table>
+      <tr><th>Name</th><th>SHA-256</th>{% if role == "admin" %}<th></th>{% endif %}</tr>
+      {% for f in items %}
+      <tr><td>{{ f.name }}</td><td><code>{{ f.sha256 }}</code></td>{% if role == "admin" %}<td><button data-del="{{ f.sha256 }}">Remove</button></td>{% endif %}</tr>
+      {% else %}
+      <tr><td colspan="3" class="muted">No fingerprints yet.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <script>
+    const status = document.getElementById("status");
+    async function sha256(file) {
+      const buf = await file.arrayBuffer();
+      const digest = await crypto.subtle.digest("SHA-256", buf);
+      return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+    const addBtn = document.getElementById("add");
+    if (addBtn) addBtn.addEventListener("click", async () => {
+      const files = document.getElementById("files").files;
+      if (!files.length) { status.textContent = "Choose one or more files first."; return; }
+      if (!window.crypto || !crypto.subtle) { status.textContent = "Hashing needs HTTPS (or localhost). Use the API instead: POST /api/v1/admin/fingerprints {name, sha256}."; return; }
+      for (const f of files) {
+        status.textContent = "Hashing " + f.name + "...";
+        const r = await fetch("/fingerprints", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: f.name, sha256: await sha256(f) }) });
+        if (!r.ok) { status.textContent = "Failed for " + f.name + ": HTTP " + r.status; return; }
+      }
+      location.reload();
+    });
+    document.querySelectorAll("button[data-del]").forEach(b => b.addEventListener("click", async () => {
+      if (!confirm("Remove this fingerprint?")) return;
+      const r = await fetch("/fingerprints/" + b.dataset.del, { method: "DELETE" });
+      if (r.ok) location.reload();
+    }));
+  </script>
+</body>
+</html>

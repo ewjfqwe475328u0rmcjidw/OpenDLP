@@ -11,6 +11,26 @@ public sealed class PolicyDoc
     public ClipboardPolicy Clipboard { get; set; } = new();
     public PrintPolicy Print { get; set; } = new();
     public BrowserPolicy Browser { get; set; } = new();
+    /// <summary>Exact-match fingerprints of confidential files (added by the server from its registry).</summary>
+    public List<Fingerprint> Fingerprints { get; set; } = new();
+    public AiPolicy Ai { get; set; } = new();
+}
+
+public sealed class Fingerprint
+{
+    public string Sha256 { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+/// <summary>Optional classification by a self-hosted model (Ollama-compatible). Off by default.</summary>
+public sealed class AiPolicy
+{
+    public bool Enabled { get; set; }
+    public string Endpoint { get; set; } = "";
+    public string Model { get; set; } = "";
+    public int MaxChars { get; set; } = 4000;
+    /// <summary>log | alert</summary>
+    public string Action { get; set; } = "alert";
 }
 
 public sealed class ContentRule
@@ -27,6 +47,12 @@ public sealed class ContentRule
     public string Severity { get; set; } = "medium";
     /// <summary>log | alert | block</summary>
     public string Action { get; set; } = "alert";
+    /// <summary>Builtin rules only: count a match only when a context word is near it (fewer false positives).</summary>
+    public bool RequireContext { get; set; }
+    /// <summary>Overrides the detector's default context words.</summary>
+    public List<string> ContextWords { get; set; } = new();
+    /// <summary>Regexes; a match that also matches one of these is ignored (e.g. documented example keys).</summary>
+    public List<string> Exclude { get; set; } = new();
 }
 
 public sealed class UsbPolicy
@@ -50,7 +76,9 @@ public sealed class PrintPolicy
 
 public sealed class BrowserPolicy
 {
+    /// <summary>audit | warn | block (used by the browser extension)</summary>
     public string Mode { get; set; } = "audit";
+    public List<string> MonitoredDomains { get; set; } = new();
     public List<string> BlockedUploadDomains { get; set; } = new();
 }
 

@@ -36,6 +36,8 @@ public sealed class ContentScanner
 
     public ContentScanner(PolicyStore policy) => _policy = policy;
 
+    public PolicyStore Policy => _policy;
+
     public List<ScanHit> Scan(string text)
     {
         var hits = new List<ScanHit>();
@@ -73,27 +75,81 @@ public sealed class ContentScanner
     {
         switch (rule.Type.ToLowerInvariant())
         {
-            case "builtin": return RunBuiltin(rule.Detector.ToLowerInvariant(), text);
+            case "builtin": return RunBuiltin(rule, text);
             case "keywords": return RunKeywords(rule.Keywords, text);
             case "regex": return RunRegex(rule.Pattern, text);
             default: return (0, "");
         }
     }
 
-    private static (int, string) RunBuiltin(string detector, string text) => detector switch
+    /// <summary>Default words that make a builtin match credible when a rule sets requireContext.</summary>
+    public static readonly IReadOnlyDictionary<string, string[]> DefaultContext = new Dictionary<string, string[]>
     {
-        "tw_national_id" => CountValid(NidRx, text, IsValidTwNationalId),
-        "credit_card" => CountValid(CardRx, text, IsValidCard),
-        "tw_mobile" => CountValid(MobileRx, text, _ => true),
-        "email" => CountValid(EmailRx, text, _ => true),
-        "tw_passport" => CountValid(PassportRx, text, _ => true),
-        "api_key" => CountValid(ApiKeyRx, text, _ => true),
-        "private_key" => CountValid(PrivateKeyRx, text, _ => true),
-        "iban" => CountValid(IbanRx, text, IsValidIban),
-        "us_ssn" => CountValid(SsnRx, text, _ => true),
-        "passport" => CountValid(PassportAnyRx, text, _ => true),
-        _ => (0, "")
+        ["credit_card"] = new[] { "card", "credit", "visa", "mastercard", "amex", "payment", "cvv", "expiry", "信用卡", "卡號" },
+        ["us_ssn"] = new[] { "ssn", "social security", "taxpayer" },
+        ["iban"] = new[] { "iban", "bank", "account", "swift", "bic" },
+        ["tw_national_id"] = new[] { "身分證", "身份證", "national id", "id no", "統一編號" },
+        ["tw_mobile"] = new[] { "手機", "電話", "mobile", "phone", "tel" },
+        ["email"] = new[] { "email", "e-mail", "mail", "信箱" },
     };
+
+    private static (Regex Rx, Func<string, bool> Valid) B(Regex rx, Func<string, bool> valid) => (rx, valid);
+    private static bool Any(string _) => true;
+
+    private static (Regex Rx, Func<string, bool> Valid)? Builtin(string detector) => detector switch
+    {
+        "tw_national_id" => B(NidRx, IsValidTwNationalId),
+        "credit_card" => B(CardRx, IsValidCard),
+        "tw_mobile" => B(MobileRx, Any),
+        "email" => B(EmailRx, Any),
+        "tw_passport" => B(PassportRx, Any),
+        "api_key" => B(ApiKeyRx, Any),
+        "private_key" => B(PrivateKeyRx, Any),
+        "iban" => B(IbanRx, IsValidIban),
+        "us_ssn" => B(SsnRx, Any),
+        "passport" => B(PassportAnyRx, Any),
+        _ => null
+    };
+
+    private (int, string) RunBuiltin(ContentRule rule, string text)
+    {
+        var detector = rule.Detector.ToLowerInvariant();
+        var b = Builtin(detector);
+        if (b == null) return (0, "");
+
+        var excludes = rule.Exclude.Select(GetRegex).Where(r => r != null).Cast<Regex>().ToList();
+        string[] context = rule.ContextWords.Count > 0
+            ? rule.ContextWords.ToArray()
+            : DefaultContext.TryGetValue(detector, out var d) ? d : Array.Empty<string>();
+
+        var n = 0;
+        var sample = "";
+        foreach (Match m in b.Value.Rx.Matches(text))
+        {
+            if (!b.Value.Valid(m.Value)) continue;
+            if (excludes.Any(x => x.IsMatch(m.Value))) continue;
+            if (rule.RequireContext && context.Length > 0 && !HasContext(text, m.Index, m.Length, context)) continue;
+            n++;
+            if (sample.Length == 0) sample = Mask(m.Value);
+        }
+        return (n, sample);
+    }
+
+    /// <summary>True when one of the words appears within 60 characters before or after the match.</summary>
+    public static bool HasContext(string text, int index, int length, IEnumerable<string> words)
+    {
+        const int window = 60;
+        var start = Math.Max(0, index - window);
+        var end = Math.Min(text.Length, index + length + window);
+        var around = text.Substring(start, end - start);
+        return words.Any(w => !string.IsNullOrWhiteSpace(w) && around.Contains(w, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private Regex? GetRegex(string pattern) => string.IsNullOrWhiteSpace(pattern) ? null : _custom.GetOrAdd(pattern, p =>
+    {
+        try { return new Regex(p, RegexOptions.CultureInvariant, RxTimeout); }
+        catch { return null; }
+    });
 
     private static (int, string) RunKeywords(List<string> keywords, string text)
     {
@@ -113,12 +169,7 @@ public sealed class ContentScanner
 
     private (int, string) RunRegex(string pattern, string text)
     {
-        if (string.IsNullOrWhiteSpace(pattern)) return (0, "");
-        var rx = _custom.GetOrAdd(pattern, p =>
-        {
-            try { return new Regex(p, RegexOptions.CultureInvariant, RxTimeout); }
-            catch { return null; }
-        });
+        var rx = GetRegex(pattern);
         if (rx == null) return (0, "");
 
         var n = 0;
@@ -220,13 +271,12 @@ public static class TextExtractor
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     }
 
+    private static readonly HashSet<string> OoxmlExts = new(StringComparer.OrdinalIgnoreCase) { ".docx", ".xlsx", ".pptx" };
+
     public static bool IsSupported(string path)
     {
         var ext = Path.GetExtension(path);
-        return TextExts.Contains(ext) ||
-               ext.Equals(".docx", StringComparison.OrdinalIgnoreCase) ||
-               ext.Equals(".xlsx", StringComparison.OrdinalIgnoreCase) ||
-               ext.Equals(".pptx", StringComparison.OrdinalIgnoreCase);
+        return TextExts.Contains(ext) || OoxmlExts.Contains(ext) || ext.Equals(".zip", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string? Extract(string path, int maxBytes)
@@ -236,14 +286,10 @@ public static class TextExtractor
             var ext = Path.GetExtension(path).ToLowerInvariant();
             if (TextExts.Contains(ext)) return ReadText(path, maxBytes);
 
-            return ext switch
-            {
-                ".docx" => ReadOoxml(path, maxBytes, n => n == "word/document.xml"),
-                ".xlsx" => ReadOoxml(path, maxBytes, n => n == "xl/sharedStrings.xml" ||
-                                                          (n.StartsWith("xl/worksheets/", StringComparison.Ordinal) && n.EndsWith(".xml", StringComparison.Ordinal))),
-                ".pptx" => ReadOoxml(path, maxBytes, n => n.StartsWith("ppt/slides/slide", StringComparison.Ordinal) && n.EndsWith(".xml", StringComparison.Ordinal)),
-                _ => null
-            };
+            if (ext == ".zip") return ReadZipArchive(path, maxBytes);
+            if (!OoxmlExts.Contains(ext)) return null;
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return ReadOoxml(fs, ext, maxBytes);
         }
         catch
         {
@@ -277,10 +323,20 @@ public static class TextExtractor
         return utf8;
     }
 
-    private static string ReadOoxml(string path, int maxBytes, Func<string, bool> pick)
+    private static Func<string, bool>? OoxmlParts(string ext) => ext switch
     {
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var zip = new ZipArchive(fs, ZipArchiveMode.Read);
+        ".docx" => n => n == "word/document.xml",
+        ".xlsx" => n => n == "xl/sharedStrings.xml" ||
+                        (n.StartsWith("xl/worksheets/", StringComparison.Ordinal) && n.EndsWith(".xml", StringComparison.Ordinal)),
+        ".pptx" => n => n.StartsWith("ppt/slides/slide", StringComparison.Ordinal) && n.EndsWith(".xml", StringComparison.Ordinal),
+        _ => null
+    };
+
+    private static string ReadOoxml(Stream stream, string ext, int maxBytes)
+    {
+        var pick = OoxmlParts(ext.ToLowerInvariant());
+        if (pick == null) return "";
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
 
         var sb = new StringBuilder();
         long budget = maxBytes;
@@ -288,24 +344,93 @@ public static class TextExtractor
         foreach (var entry in zip.Entries)
         {
             if (!pick(entry.FullName)) continue;
-
-            using var s = entry.Open();
-            var cap = (int)Math.Min(budget, 8 * 1024 * 1024); // zip-bomb guard
-            var buf = new byte[cap];
-            var total = 0;
-            while (total < cap)
-            {
-                var r = s.Read(buf, total, cap - total);
-                if (r <= 0) break;
-                total += r;
-            }
-
-            var xml = Encoding.UTF8.GetString(buf, 0, total);
+            var xml = Encoding.UTF8.GetString(ReadCapped(entry, (int)Math.Min(budget, 8 * 1024 * 1024)));   // zip-bomb guard
             sb.Append(Regex.Replace(xml, "<[^>]+>", " ")).Append(' ');
-
-            budget -= total;
+            budget -= xml.Length;
             if (budget <= 0) break;
         }
         return sb.ToString();
+    }
+
+    private static byte[] ReadCapped(ZipArchiveEntry entry, int cap)
+    {
+        using var s = entry.Open();
+        var buf = new byte[Math.Max(0, cap)];
+        var total = 0;
+        while (total < buf.Length)
+        {
+            var r = s.Read(buf, total, buf.Length - total);
+            if (r <= 0) break;
+            total += r;
+        }
+        return buf.AsSpan(0, total).ToArray();
+    }
+
+    /// <summary>
+    /// Text of supported files inside a .zip (one level; Office files inside are opened too).
+    /// Bounded: at most 200 entries and maxBytes of decompressed data. Encrypted entries are skipped.
+    /// </summary>
+    private static string ReadZipArchive(string path, int maxBytes)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var zip = new ZipArchive(fs, ZipArchiveMode.Read);
+        var sb = new StringBuilder();
+        long budget = maxBytes;
+        var seen = 0;
+        foreach (var entry in zip.Entries)
+        {
+            if (++seen > 200 || budget <= 0) break;
+            if (entry.Length == 0 || entry.FullName.EndsWith('/')) continue;
+            var ext = Path.GetExtension(entry.Name);
+            try
+            {
+                if (TextExts.Contains(ext))
+                {
+                    var bytes = ReadCapped(entry, (int)Math.Min(budget, 8 * 1024 * 1024));
+                    budget -= bytes.Length;
+                    sb.Append(Encoding.UTF8.GetString(bytes)).Append('\n');
+                }
+                else if (OoxmlExts.Contains(ext) && entry.Length <= 16 * 1024 * 1024)
+                {
+                    using var ms = new MemoryStream(ReadCapped(entry, 16 * 1024 * 1024));
+                    var text = ReadOoxml(ms, ext, (int)Math.Max(0, budget));
+                    budget -= text.Length;
+                    sb.Append(text).Append('\n');
+                }
+            }
+            catch (InvalidDataException) { /* encrypted / corrupt entry */ }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>SHA-256 (lower-case hex) of a file and of each file inside it when it is a .zip; bounded.</summary>
+    public static IEnumerable<(string Name, string Sha256)> Hashes(string path, long maxFileBytes = 100L * 1024 * 1024)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists || info.Length > maxFileBytes) yield break;
+        string own;
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            own = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fs)).ToLowerInvariant();
+        yield return (Path.GetFileName(path), own);
+
+        if (!path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) yield break;
+        var list = new List<(string, string)>();
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var zip = new ZipArchive(fs, ZipArchiveMode.Read);
+            foreach (var e in zip.Entries.Take(500))
+            {
+                if (e.Length == 0 || e.Length > maxFileBytes || e.FullName.EndsWith('/')) continue;
+                try
+                {
+                    using var es = e.Open();
+                    list.Add((e.FullName, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(es)).ToLowerInvariant()));
+                }
+                catch (InvalidDataException) { }
+            }
+        }
+        catch (InvalidDataException) { }
+        foreach (var x in list) yield return x;
     }
 }

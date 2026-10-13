@@ -115,7 +115,23 @@ if ($hit.message -match "A123456789|4111 1111 1111 1111") { Fail "raw sensitive 
 if ($hit.level -ne "ALERT") { Fail "expected ALERT level, got $($hit.level)" }
 Write-Output "detected: $($hit.message)"
 
-# 4. revocation
+# 4. fingerprint: an exact copy of a registered confidential file, renamed and zipped, is still recognised
+$secretSrc = Join-Path $work "board-plan.txt"
+Set-Content -Path $secretSrc -Value "Project Falcon - acquisition target list (draft)" -Encoding UTF8 -NoNewline
+$secretSha = (Get-FileHash $secretSrc -Algorithm SHA256).Hash.ToLower()
+$policyBefore = (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=POLICY_UPDATED" -Headers $H | ForEach-Object { $_ }).Count
+Invoke-RestMethod -Method Post "$base/api/v1/admin/fingerprints" -Headers $H -ContentType "application/json" `
+    -Body (@{ sha256 = $secretSha; name = "Board plan" } | ConvertTo-Json) | Out-Null
+Wait-Until { (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=POLICY_UPDATED" -Headers $H | ForEach-Object { $_ }).Count -gt $policyBefore } 60 "agent received fingerprint policy" | Out-Null
+$stage = Join-Path $work "stage"
+New-Item -ItemType Directory -Force -Path $stage | Out-Null
+Copy-Item $secretSrc (Join-Path $stage "holiday-photos.txt")
+Compress-Archive -Path (Join-Path $stage "holiday-photos.txt") -DestinationPath (Join-Path $work "watch/vacation.zip") -Force
+$fp = Wait-Until { Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=FINGERPRINT_MATCH" -Headers $H | ForEach-Object { $_ } | Select-Object -First 1 } 60 "FINGERPRINT_MATCH for renamed copy inside a zip"
+if ($fp.message -notmatch 'Board plan' -or $fp.message -notmatch 'vacation\.zip') { Fail "unexpected fingerprint event: $($fp.message)" }
+Write-Host "fingerprint event: $($fp.message)"
+
+# 5. revocation
 Invoke-RestMethod -Method Post "$base/api/v1/admin/agents/$agentId/revoke" -Headers $H | Out-Null
 $before = (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&limit=500" -Headers $H).Count
 Set-Content -Path (Join-Path $work "watch/after-revoke.txt") -Value "A123456789" -Encoding UTF8
@@ -127,6 +143,6 @@ Write-Output "ok: revoked agent is rejected"
 Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "E2E PASSED"
-"## OpenDLP end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## OpenDLP end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- fingerprint match of a renamed copy inside a zip`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 # The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
 exit 0

@@ -139,6 +139,8 @@ public sealed class FileMonitor : IDisposable
             if (ent >= _entropyThreshold)
                 _logger.Alert("HIGH_ENTROPY", $"severity=medium High entropy file: {path} ({ent:F2})");
 
+            CheckFingerprints(path, usb);
+
             if (TextExtractor.IsSupported(path))
                 await ScanContentAsync(path, usb);
         }
@@ -164,7 +166,11 @@ public sealed class FileMonitor : IDisposable
             if (text == null) return;
 
             var hits = _scanner.Scan(text);
-            if (hits.Count == 0) return;
+            if (hits.Count == 0)
+            {
+                await ClassifyWithAiAsync(path, text, usb);
+                return;
+            }
 
             var type = usb ? "USB_FILE_CONTENT" : "CONTENT_MATCH";
             var msg = $"{ContentScanner.Summarize(hits)} file={path}";
@@ -175,6 +181,44 @@ public sealed class FileMonitor : IDisposable
         {
             _scanGate.Release();
         }
+    }
+
+    /// <summary>Exact copies of registered confidential files (also inside .zip), regardless of file name.</summary>
+    private void CheckFingerprints(string path, bool usb)
+    {
+        var fps = _scanner.Policy.Current.Fingerprints;
+        if (fps.Count == 0) return;
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in fps)
+            if (!string.IsNullOrWhiteSpace(f.Sha256)) map.TryAdd(f.Sha256.Trim(), f.Name);
+        try
+        {
+            foreach (var (name, sha) in TextExtractor.Hashes(path))
+            {
+                if (!map.TryGetValue(sha, out var fpName)) continue;
+                var entry = name == Path.GetFileName(path) ? "" : $" entry={name}";
+                _logger.Alert(usb ? "USB_FINGERPRINT_MATCH" : "FINGERPRINT_MATCH",
+                    $"severity=critical rules=FINGERPRINTx1 fingerprint=\"{fpName}\" file={path}{entry}");
+                return;
+            }
+        }
+        catch (IOException) { /* locked / gone */ }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static readonly AiClassifier Ai = new();
+
+    /// <summary>Optional: ask the organisation's own model to classify documents no rule matched.</summary>
+    private async Task ClassifyWithAiAsync(string path, string text, bool usb)
+    {
+        var ai = _scanner.Policy.Current.Ai;
+        if (!ai.Enabled || string.IsNullOrWhiteSpace(ai.Endpoint) || string.IsNullOrWhiteSpace(text)) return;
+        var result = await Ai.ClassifyAsync(ai, text, CancellationToken.None);
+        if (result == null || result.Value.Label != "confidential") return;
+        var msg = $"severity=high rules=AI-CONFIDENTIALx1 model={ai.Model} reason=\"{result.Value.Reason}\" file={path}";
+        var type = usb ? "USB_AI_CLASSIFIED" : "AI_CLASSIFIED";
+        if (ai.Action.Equals("log", StringComparison.OrdinalIgnoreCase)) _logger.Info(type, msg);
+        else _logger.Alert(type, msg);
     }
 
     private bool IsDup(string path)
