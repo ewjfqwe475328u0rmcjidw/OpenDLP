@@ -66,13 +66,16 @@ public class OcrTests
         }
         try
         {
-            var text = await WindowsOcr.RecognizeAsync(path, CancellationToken.None);
+            string? text;
+            try { text = await WindowsOcr.RecognizeAsync(path, CancellationToken.None); }
+            catch (Exception ex) { throw new Xunit.Sdk.XunitException($"OCR text: <exception> {ex.GetType().Name}: {ex.Message}"); }
             _out.WriteLine($"OCR text: {text}");
-            Assert.NotNull(text);
+            Assert.True(text != null, "OCR text: <null>");
             var policy = new PolicyStore(Path.Combine(Path.GetTempPath(), "none.json"), Path.Combine(AppContext.BaseDirectory, "policy.default.json"));
             policy.LoadFromDisk();
             var hits = new ContentScanner(policy).Scan(text!);
-            Assert.Contains(hits, h => h.RuleId == "CREDIT-CARD");
+            Assert.True(hits.Any(h => h.RuleId == "CREDIT-CARD"),
+                $"OCR text: [{text!.Replace("\r", " ").Replace("\n", " | ")}] rules: [{string.Join(",", hits.Select(h => h.RuleId))}]");
         }
         finally { File.Delete(path); }
     }

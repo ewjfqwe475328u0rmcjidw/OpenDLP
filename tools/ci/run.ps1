@@ -5,7 +5,7 @@ $log = New-TemporaryFile
 Invoke-Expression "$Command 2>&1" | Tee-Object -FilePath $log
 $code = $LASTEXITCODE
 if ($code -ne 0) {
-    $errs = Get-Content $log | Select-String -Pattern '(: error |error NU\d+|error CS\d+|error MSB\d+|\[FAIL\]|Failed )' | Select-Object -First 25
+    $errs = Get-Content $log | Select-String -Pattern '(: error |error NU\d+|error CS\d+|error MSB\d+|\[FAIL\]|Failed |Assert\.|Exception|Expected:|Actual:|OCR text:|Stack Trace|\.cs:line)' | Select-Object -First 40
     if (-not $errs) { $errs = Get-Content $log | Select-Object -Last 15 }
     foreach ($e in $errs) {
         $line = ($e.ToString().Trim() -replace '%', '%25' -replace "`r", '' -replace "`n", ' ')
