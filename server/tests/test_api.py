@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
+import report
 
 
 ADMIN = "admin-token-that-is-long-and-random-enough"
@@ -518,3 +519,73 @@ def test_deploy_page_warnings(client, monkeypatch):
     monkeypatch.setattr(main, "PUBLIC_URL", "http://10.0.0.5:8000")
     html = c.get("/deploy", auth=("admin", "dash-pass")).text
     assert "Self-enrollment is disabled" in html and "plain HTTP" in html
+
+
+# ---------------------------------------------------------------- monthly PDF report
+
+def _pdf_text(data: bytes) -> str:
+    import io
+    from pypdf import PdfReader
+    return "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(data)).pages)
+
+
+def test_monthly_report_pdf(client, monkeypatch):
+    c, token = client
+    monkeypatch.setattr(main, "ORG_NAME", "Acme Test Ltd")
+    c.post("/api/v1/telemetry", headers=headers(token), json={"agentId": "agent-test", "events": [
+        {"level": "ALERT", "eventType": "CONTENT_MATCH", "message": "severity=critical rules=API-KEYx2,TW-NIDx1 samples=x file=a.txt"},
+        {"level": "ALERT", "eventType": "CONTENT_MATCH", "message": "severity=high rules=TW-NIDx3 samples=y file=b.docx"},
+        {"level": "WARN", "eventType": "USB_INSERT", "message": "E: drive"},
+        {"level": "WARN", "eventType": "PRINT_JOB", "message": "printer=P pages=2"}]})
+    r = c.get("/api/v1/reports/monthly.pdf", headers=viewer())
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF")
+    text = _pdf_text(r.content)
+    assert "Acme Test Ltd" in text and "Data protection report" in text
+    assert "TW-NID" in text and "API-KEY" in text          # top rules
+    assert "Print jobs" in text and "Removable drives" in text
+    assert "not a certification" in text                    # honest disclaimer
+    # dashboard download + auth
+    assert c.get("/reports/monthly.pdf", auth=("viewer", "view-pass")).content.startswith(b"%PDF")
+    assert c.get("/api/v1/reports/monthly.pdf", headers=headers(token)).status_code == 403
+    assert c.get("/api/v1/reports/monthly.pdf?month=bad", headers=admin()).status_code == 422
+
+
+def test_report_rule_and_health_aggregation(client):
+    c, token = client
+    c.post("/api/v1/telemetry", headers=headers(token), json={"agentId": "agent-test", "events": [
+        {"level": "ALERT", "eventType": "CONTENT_MATCH", "message": "severity=high rules=CREDIT-CARDx2,IBANx1"},
+        {"level": "ALERT", "eventType": "CONTENT_MATCH", "message": "severity=critical rules=CREDIT-CARDx1"}]})
+    conn = main.db()
+    conn.execute("INSERT INTO agents(agent_id, last_seen, last_event) VALUES ('old-pc', '2000-01-01T00:00:00+00:00', '')")
+    conn.commit()
+    d = report.collect(conn, None)
+    conn.close()
+    assert dict(d["top_rules"]) == {"CREDIT-CARD": 3, "IBAN": 1}
+    assert d["by_severity"]["critical"] == 1 and d["by_severity"]["high"] == 1
+    assert [a["agent_id"] for a in d["stale_agents"]] == ["old-pc"]
+    assert d["agents_reporting"] == 1 and d["agents_total"] == 2
+
+
+def test_monthly_report_email_sent_once(client, monkeypatch):
+    from datetime import datetime, timezone
+    sent = []
+    monkeypatch.setattr(main, "REPORT_EMAIL", True)
+    monkeypatch.setattr(main, "SMTP_HOST", "smtp.invalid")
+    monkeypatch.setattr(main, "SMTP_TO", ["boss@example.com"])
+    monkeypatch.setattr(main, "deliver_report_email", lambda subj, text, pdf, name: sent.append((subj, name, pdf[:4])))
+    nov1 = datetime(2026, 11, 1, 8, tzinfo=timezone.utc)
+    assert main.run_monthly_report_job(nov1) == "2026-10"
+    assert main.run_monthly_report_job(nov1) is None          # not twice
+    assert sent == [("OpenDLP data protection report 2026-10", "opendlp-report-2026-10.pdf", b"%PDF")]
+    monkeypatch.setattr(main, "REPORT_EMAIL", False)
+    assert main.run_monthly_report_job(datetime(2026, 12, 1, tzinfo=timezone.utc)) is None
+
+
+def test_month_bounds():
+    from datetime import datetime, timezone
+    s, e, label = report.month_bounds("2026-02")
+    assert (s.day, e.month, e.day, label) == (1, 3, 1, "2026-02")
+    s, e, _ = report.month_bounds("2026-12")
+    assert (e.year, e.month) == (2027, 1)
+    assert report.previous_month(datetime(2026, 1, 1, tzinfo=timezone.utc)) == "2025-12"

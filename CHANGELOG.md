@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 — monthly PDF report
+- **Monthly data protection report (PDF)**: endpoints reporting, alerts by severity, alerts per day chart, what was detected (content, removable drives, printing, clipboard, disguised and high-entropy files), most triggered rules, endpoints with most alerts, endpoints not reporting or revoked. Download from the dashboard or `GET /api/v1/reports/monthly.pdf?month=YYYY-MM`; optionally e-mailed on the 1st of each month (`OPENDLP_REPORT_EMAIL=1`, `OPENDLP_ORG_NAME`). States plainly that it is audit evidence, not a compliance certification.
+- "Hosted OpenDLP - interest" issue template to gauge demand for a managed server.
+
 ## 0.11.0 — verified install, macOS/Linux agent, fleet deployment
 Every item below is exercised by CI on clean Windows, macOS and Linux VMs.
 - **macOS and Linux agent** (`agent-unix/`): shares the detection core with the Windows agent (content rules, policy signing, encrypted log, telemetry, self-enrollment); removable-volume auditing; `install.sh` / `uninstall.sh` for launchd and systemd (automatic restart). Token and config stored root-only (0600).

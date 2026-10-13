@@ -37,7 +37,7 @@ Test with: `curl -X POST -H "Authorization: Bearer $OPENDLP_ADMIN_TOKEN" https:/
    ```
 3. The PC appears in the dashboard within a minute. Its own access token is created automatically and stored encrypted on the machine — the enrollment code is never stored there.
 
-Macs and Linux machines: `curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.11.0/deploy-opendlp.sh | sudo bash -s -- --server-url https://dlp.yourcompany.com --enrollment-code "<code>"`. Rolling out to the whole company: the dashboard's **Deploy agents** page and [DEPLOYMENT.md](DEPLOYMENT.md).
+Macs and Linux machines: `curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.12.0/deploy-opendlp.sh | sudo bash -s -- --server-url https://dlp.yourcompany.com --enrollment-code "<code>"`. Rolling out to the whole company: the dashboard's **Deploy agents** page and [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Lost or stolen laptop? Dashboard/API → revoke the agent: `POST /api/v1/admin/agents/<id>/revoke`.
 

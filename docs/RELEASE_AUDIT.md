@@ -1,10 +1,10 @@
-# OpenDLP v0.11.0 — Release audit
+# OpenDLP v0.12.0 — Release audit
 
 ## Verification status
 
 | Area | How it is verified | Status |
 |---|---|---|
-| Server API (enrollment, roles, notifications, policy, charts, deploy page, CSV, retention) | 48 automated tests, every push | ✅ |
+| Server API (enrollment, roles, notifications, policy, charts, deploy page, PDF report, CSV, retention) | 52 automated tests, every push | ✅ |
 | Docker image | built in CI, every push | ✅ |
 | Windows agent + watchdog compile, unit tests (detectors, checksums, masking, policy store, ECDSA, DPAPI) | CI on `windows-latest` | ✅ |
 | Windows console E2E: enrollment, DPAPI token, signed policy, telemetry, detection with masking, revocation | `tests/e2e/run-e2e.ps1` | ✅ |

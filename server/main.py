@@ -21,6 +21,8 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+import report
+
 # Must be set via environment variable; if unset, the API rejects all requests (fail closed).
 API_TOKEN = os.environ.get("OPENDLP_TOKEN", "").strip()
 DB_PATH = Path(os.environ.get("OPENDLP_DB", Path(__file__).parent / "opendlp.db"))
@@ -54,6 +56,9 @@ DASHBOARD_VIEWER_PASSWORD = os.environ.get("OPENDLP_DASHBOARD_VIEWER_PASSWORD", 
 PUBLIC_URL = os.environ.get("OPENDLP_PUBLIC_URL", "").strip().rstrip("/")
 # GitHub repository whose releases the deploy commands download from.
 RELEASE_REPO = os.environ.get("OPENDLP_RELEASE_REPO", "ewjfqwe475328u0rmcjidw/OpenDLP").strip()
+# Monthly PDF report: organisation name on the cover, and whether to e-mail it (SMTP settings below) on the 1st.
+ORG_NAME = os.environ.get("OPENDLP_ORG_NAME", "Your organization").strip() or "Your organization"
+REPORT_EMAIL = os.environ.get("OPENDLP_REPORT_EMAIL", "") == "1"
 # Notifications for high/critical alerts: generic JSON webhook (Slack/Discord/Teams/Mattermost/n8n…) and/or SMTP e-mail.
 WEBHOOK_URL = os.environ.get("OPENDLP_WEBHOOK_URL", "").strip()
 NOTIFY_MIN_SEVERITY = os.environ.get("OPENDLP_NOTIFY_MIN_SEVERITY", "high").lower()
@@ -66,13 +71,38 @@ SMTP_FROM = os.environ.get("OPENDLP_SMTP_FROM", "")
 SMTP_TO = [x.strip() for x in os.environ.get("OPENDLP_SMTP_TO", "").split(",") if x.strip()]
 SMTP_STARTTLS = os.environ.get("OPENDLP_SMTP_STARTTLS", "1") != "0"
 
+_stop_scheduler = threading.Event()
+
+
+def _report_scheduler() -> None:
+    """Hourly: on/after the 1st, e-mail last month's PDF report once (if enabled)."""
+    while not _stop_scheduler.wait(3600):
+        run_monthly_report_job()
+
+
+def run_monthly_report_job(now: datetime | None = None) -> str | None:
+    if not (REPORT_EMAIL and SMTP_HOST and SMTP_TO):
+        return None
+    with _db_lock:
+        conn = db()
+        try:
+            return report.maybe_send_monthly(conn, now or datetime.now(timezone.utc), ORG_NAME, deliver_report_email)
+        except Exception:  # noqa: BLE001 - never crash the scheduler; it retries next hour
+            return None
+        finally:
+            conn.close()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     purge_old_events()
+    _stop_scheduler.clear()
+    threading.Thread(target=_report_scheduler, daemon=True, name="opendlp-report").start()
     yield
+    _stop_scheduler.set()
 
 
-app = FastAPI(title="OpenDLP Central Server", version="0.11.0", lifespan=lifespan)
+app = FastAPI(title="OpenDLP Central Server", version="0.12.0", lifespan=lifespan)
 _basic = HTTPBasic(auto_error=False)
 
 
@@ -409,6 +439,24 @@ def deliver_email(subject: str, text: str) -> None:
     msg["To"] = ", ".join(SMTP_TO)
     msg.set_content(text)
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
+        if SMTP_STARTTLS:
+            smtp.starttls()
+        if SMTP_USER:
+            smtp.login(SMTP_USER, SMTP_PASSWORD)
+        smtp.send_message(msg)
+
+
+def deliver_report_email(subject: str, text: str, pdf: bytes, filename: str) -> None:
+    import smtplib
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = SMTP_FROM or SMTP_USER
+    msg["To"] = ", ".join(SMTP_TO)
+    msg.set_content(text)
+    msg.add_attachment(pdf, maintype="application", subtype="pdf", filename=filename)
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         if SMTP_STARTTLS:
             smtp.starttls()
         if SMTP_USER:
@@ -951,6 +999,34 @@ def dashboard(
             ],
         },
     )
+
+
+def _report_response(month: str | None) -> Response:
+    try:
+        with _db_lock:
+            conn = db()
+            try:
+                label, pdf = report.build_monthly_report(conn, month, ORG_NAME)
+            finally:
+                conn.close()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="opendlp-report-{label}.pdf"'},
+    )
+
+
+@app.get("/api/v1/reports/monthly.pdf")
+def monthly_report_api(month: str | None = None, _role: str = Depends(viewer_auth)) -> Response:
+    """PDF report for a month ('YYYY-MM', default: current month to date)."""
+    return _report_response(month)
+
+
+@app.get("/reports/monthly.pdf")
+def monthly_report_dashboard(month: str | None = None, _role: str = Depends(dashboard_auth)) -> Response:
+    return _report_response(month)
 
 
 @app.get("/deploy", response_class=HTMLResponse)

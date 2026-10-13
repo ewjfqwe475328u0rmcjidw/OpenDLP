@@ -1,0 +1,41 @@
+name: Hosted OpenDLP - interest
+description: Tell us you'd want a hosted (managed) OpenDLP server so you don't have to run your own
+title: "[Hosted] interest"
+labels: ["hosted-interest"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We're considering a **hosted OpenDLP**: we run the server, backups, HTTPS and updates; you only install agents.
+        Planned pricing: **Team $50/month** (up to 25 endpoints), **Business $100/month** (up to 100), annual billing at 10 months' price, larger fleets on request.
+        Nothing to pay now. **This issue is public** - don't post anything confidential.
+  - type: dropdown
+    id: size
+    attributes:
+      label: How many computers would you protect?
+      options: ["1-25", "26-100", "101-500", "500+"]
+    validations: {required: true}
+  - type: dropdown
+    id: role
+    attributes:
+      label: You are...
+      options: ["IT for my own company", "MSP / IT service provider for several clients", "Security consultant", "Just evaluating"]
+    validations: {required: true}
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Platforms
+      options:
+        - label: Windows
+        - label: macOS
+        - label: Linux
+  - type: dropdown
+    id: price
+    attributes:
+      label: Would the planned price work for you?
+      options: ["Yes", "Yes, if billed yearly", "Too expensive", "I'd pay more for extra features (tell us below)"]
+  - type: textarea
+    id: needs
+    attributes:
+      label: What would make it worth paying for?
+      description: e.g. monthly PDF reports, SSO, multi-company console for MSPs, data residency (EU/US/Asia), support SLA

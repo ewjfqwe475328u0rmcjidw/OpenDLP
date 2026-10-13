@@ -1,4 +1,4 @@
-# OpenDLP v0.11.0
+# OpenDLP v0.12.0
 
 Open-source **endpoint data-loss-prevention (audit & detection)** for small and medium businesses: agents for **Windows, macOS and Linux**, a watchdog, and a FastAPI central server with dashboard. It is an **audit-first prototype**, not a finished commercial DLP product.
 
@@ -29,7 +29,7 @@ Verify downloads with `SHA256SUMS.txt` from the same release.
 ## Features
 
 - **Agent (.NET 8, Windows):** file-activity monitoring on configured paths, content inspection of supported text/Office files (payment cards, IBAN, US SSN, passports in 9 languages, API keys/tokens, private keys, Taiwan national ID, bulk phone/e-mail, multilingual keywords, custom regex), removable-drive events, print auditing (PrintService log), clipboard monitoring via a user-session helper, encrypted local log with a durable upload outbox.
-- **Server (FastAPI + SQLite):** telemetry ingestion, signed policy distribution (HMAC + optional ECDSA) with versioning, **agent self-enrollment** with per-machine tokens and revocation, admin/viewer roles, dashboard with severity tiles, hourly/daily charts and filters, CSV export, **Slack/Teams/webhook and e-mail alerts**, age-based retention, one-command HTTPS deployment.
+- **Server (FastAPI + SQLite):** telemetry ingestion, signed policy distribution (HMAC + optional ECDSA) with versioning, **agent self-enrollment** with per-machine tokens and revocation, admin/viewer roles, dashboard with severity tiles, hourly/daily charts and filters, **monthly PDF report** (download or automatic e-mail), CSV export, **Slack/Teams/webhook and e-mail alerts**, age-based retention, one-command HTTPS deployment.
 - **macOS / Linux agent:** same detection engine, removable-volume auditing, launchd / systemd service with automatic restart.
 - **Watchdog (Windows):** restarts the service when it stops or its heartbeat goes stale.
 - **Fleet deployment:** silent, checksum-verified, idempotent deploy scripts for Intune, Group Policy, RMM, Jamf, Kandji, SSH and Ansible; a dashboard page generates the commands.
@@ -99,7 +99,7 @@ Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. 
 | `GET /api/v1/events` | Admin token | List recent events |
 | `GET /api/v1/agents` | Admin token | List agents and last-seen time |
 | `POST /api/v1/enroll` | enrollment code | Self-enroll; returns a per-machine token |
-| `GET /api/v1/stats`, `/stats/timeseries`, `/events.csv` | Admin or viewer token | Statistics, chart data, CSV export |
+| `GET /api/v1/stats`, `/stats/timeseries`, `/events.csv`, `/reports/monthly.pdf` | Admin or viewer token | Statistics, chart data, CSV export, monthly PDF report |
 | `GET/PUT /api/v1/admin/policy` | viewer / admin | Read / replace the policy (validated) |
 | `POST /api/v1/admin/agents/{id}/revoke`, `/unrevoke`, `DELETE …/agents/{id}` | Admin token | Agent lifecycle |
 | `POST /api/v1/admin/notify/test` | Admin token | Send a test alert to webhook / e-mail |
@@ -160,6 +160,10 @@ Agent unit tests (Windows, .NET 8 SDK): `dotnet test agent.tests/OpenDLP.Agent.T
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push: server tests, Docker build, Windows agent build + unit tests, and end-to-end tests on clean **Windows, macOS and Linux** VMs (fleet deploy script, service install, enrollment, signed policy, detection in text/Word/Excel files, printing, crash recovery, uninstall). Pushing a `v*` tag publishes packages for all platforms to Releases.
 
 For manual Windows testing, also cover: valid/invalid token, bad policy signature, offline retry, log retention, helper IPC permissions, and service start/stop.
+
+## Hosted version (planned)
+
+Don't want to run a server? We're considering a hosted OpenDLP: **Team $50/month** (up to 25 endpoints), **Business $100/month** (up to 100), annual billing at 10 months' price. If you'd use it, [tell us here](../../issues/new?template=hosted-interest.yml) - nothing to pay now. The open-source edition stays free and complete.
 
 ## Contributing
 
