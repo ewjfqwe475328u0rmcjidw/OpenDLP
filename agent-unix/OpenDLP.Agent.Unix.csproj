@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>opendlp-agent</AssemblyName>
     <RootNamespace>OpenDLP.Agent</RootNamespace>
-    <Version>0.12.0</Version>
+    <Version>0.13.0</Version>
     <Authors>OpenDLP Contributors</Authors>
     <Description>OpenDLP endpoint agent for macOS and Linux (file monitoring, content inspection, removable volumes)</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>

@@ -13,12 +13,12 @@
 .EXAMPLE
   # Offline / LAN: copy the zip to a share once, no internet needed on the PCs
   .\Deploy-OpenDLP.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "CODE" `
-      -PackagePath \\fileserver\it\OpenDLP-windows-x64-v0.12.0.zip -ExpectedSha256 <hash from SHA256SUMS.txt>
+      -PackagePath \\fileserver\it\OpenDLP-windows-x64-v0.13.0.zip -ExpectedSha256 <hash from SHA256SUMS.txt>
 #>
 param(
     [Parameter(Mandatory)][string]$ServerUrl,
     [Parameter(Mandatory)][string]$EnrollmentCode,
-    [string]$Version = "v0.12.0",
+    [string]$Version = "v0.13.0",
     [string]$Repo = "ewjfqwe475328u0rmcjidw/OpenDLP",
     [string]$PackagePath = "",
     [string]$ExpectedSha256 = "",

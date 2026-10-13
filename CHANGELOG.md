@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.0 — browser extension, fingerprints, cloud scanning, fewer false positives
+- **Browser extension (Chrome / Edge)**: warns about or blocks pasting, dropping and uploading sensitive data to AI chats (ChatGPT, Claude, Gemini, Copilot, ...), personal cloud drives and file-sharing sites; text inside Office/zip files; blocked-upload sites; self-enrolls, verifies the signed policy, reports `BROWSER_*` events; managed configuration for Intune / Group Policy. Tested end-to-end in real Chromium in CI.
+- **File fingerprints**: register confidential files (hashed in the admin's browser, never uploaded); agents and the extension recognise exact copies even when renamed or zipped (`FINGERPRINT_MATCH`, critical).
+- **Zip scanning**: agents and the extension inspect text and Office files inside `.zip` archives.
+- **Fewer false positives**: rules can require nearby context words (`requireContext`, `contextWords`) and ignore matches (`exclude`); the default policy uses this for SSNs and documented example API keys.
+- **Cloud drive scanning (report-only)**: Google Workspace and Microsoft 365 files shared with "anyone with the link" that contain sensitive data or fingerprinted files → `CLOUD_PUBLIC_SHARE` alerts. Tested against simulated APIs; see docs/CLOUD-SCAN.md.
+- **Optional AI classification** with a self-hosted Ollama model for documents no rule matched (off by default; docs/AI-CLASSIFICATION.md).
+- Shared detector test vectors (`tests/vectors/detectors.json`) run against the C#, JavaScript and Python implementations.
+- Monthly report counts browser, fingerprint, cloud and AI detections.
+
 ## 0.12.0 — monthly PDF report
 - **Monthly data protection report (PDF)**: endpoints reporting, alerts by severity, alerts per day chart, what was detected (content, removable drives, printing, clipboard, disguised and high-entropy files), most triggered rules, endpoints with most alerts, endpoints not reporting or revoked. Download from the dashboard or `GET /api/v1/reports/monthly.pdf?month=YYYY-MM`; optionally e-mailed on the 1st of each month (`OPENDLP_REPORT_EMAIL=1`, `OPENDLP_ORG_NAME`). States plainly that it is audit evidence, not a compliance certification.
 - "Hosted OpenDLP - interest" issue template to gauge demand for a managed server.

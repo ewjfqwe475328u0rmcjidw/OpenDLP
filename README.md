@@ -1,4 +1,4 @@
-# OpenDLP v0.12.0
+# OpenDLP v0.13.0
 
 Open-source **endpoint data-loss-prevention (audit & detection)** for small and medium businesses: agents for **Windows, macOS and Linux**, a watchdog, and a FastAPI central server with dashboard. It is an **audit-first prototype**, not a finished commercial DLP product.
 
@@ -15,6 +15,7 @@ Open-source **endpoint data-loss-prevention (audit & detection)** for small and 
 | Windows 10/11 (x64) | `OpenDLP-windows-x64-<version>.zip` | extract, elevated PowerShell in `agent`: `.\install-service.ps1 -ServerUrl ... -EnrollmentCode ... -WithWatchdog` |
 | macOS Apple Silicon / Intel | `OpenDLP-macos-arm64-…` / `OpenDLP-macos-x64-….tar.gz` | extract, `sudo ./opendlp-agent/install.sh --server-url ... --enrollment-code ...` |
 | Linux x64 (systemd) | `OpenDLP-linux-x64-<version>.tar.gz` | same as macOS |
+| Chrome / Edge | `OpenDLP-browser-extension-<version>.zip` | publish to your Web Store / Add-ons account or load unpacked - see [browser-extension/README.md](browser-extension/README.md) |
 | Many machines | `Deploy-OpenDLP.ps1`, `deploy-opendlp.sh` | see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) or the dashboard's **Deploy agents** page |
 | Server | this repository | `docker compose up -d` - see [docs/QUICKSTART-SMB.md](docs/QUICKSTART-SMB.md) |
 
@@ -30,6 +31,10 @@ Verify downloads with `SHA256SUMS.txt` from the same release.
 
 - **Agent (.NET 8, Windows):** file-activity monitoring on configured paths, content inspection of supported text/Office files (payment cards, IBAN, US SSN, passports in 9 languages, API keys/tokens, private keys, Taiwan national ID, bulk phone/e-mail, multilingual keywords, custom regex), removable-drive events, print auditing (PrintService log), clipboard monitoring via a user-session helper, encrypted local log with a durable upload outbox.
 - **Server (FastAPI + SQLite):** telemetry ingestion, signed policy distribution (HMAC + optional ECDSA) with versioning, **agent self-enrollment** with per-machine tokens and revocation, admin/viewer roles, dashboard with severity tiles, hourly/daily charts and filters, **monthly PDF report** (download or automatic e-mail), CSV export, **Slack/Teams/webhook and e-mail alerts**, age-based retention, one-command HTTPS deployment.
+- **Browser extension (Chrome / Edge):** warns about or blocks pasting and uploading sensitive data into AI chats, personal cloud drives and file-sharing sites. See [browser-extension/README.md](browser-extension/README.md).
+- **File fingerprints:** register confidential files; exact copies are recognised everywhere, even renamed or inside a zip.
+- **Cloud drive scanning (report-only):** Google Workspace and Microsoft 365 files shared with "anyone with the link" that contain sensitive data. See [docs/CLOUD-SCAN.md](docs/CLOUD-SCAN.md).
+- **Optional AI classification** with a model you host yourself. See [docs/AI-CLASSIFICATION.md](docs/AI-CLASSIFICATION.md).
 - **macOS / Linux agent:** same detection engine, removable-volume auditing, launchd / systemd service with automatic restart.
 - **Watchdog (Windows):** restarts the service when it stops or its heartbeat goes stale.
 - **Fleet deployment:** silent, checksum-verified, idempotent deploy scripts for Intune, Group Policy, RMM, Jamf, Kandji, SSH and Ansible; a dashboard page generates the commands.
@@ -103,6 +108,8 @@ Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. 
 | `GET/PUT /api/v1/admin/policy` | viewer / admin | Read / replace the policy (validated) |
 | `POST /api/v1/admin/agents/{id}/revoke`, `/unrevoke`, `DELETE …/agents/{id}` | Admin token | Agent lifecycle |
 | `POST /api/v1/admin/notify/test` | Admin token | Send a test alert to webhook / e-mail |
+| `GET/POST /api/v1/admin/fingerprints`, `DELETE …/{sha256}` | viewer / admin | Confidential-file fingerprint registry |
+| `GET /api/v1/admin/cloudscan`, `POST …/cloudscan/run` | viewer / admin | Cloud drive scan status / run now |
 | `GET /health` | none | Liveness check |
 
 The default policy is `policies/default-policy.json` (override with `OPENDLP_POLICY`). It is validated before being signed. Policies are signed with HMAC-SHA256 using a key derived from the agent's token — a shared-secret prototype design, not asymmetric signing. Use TLS and protect your tokens.

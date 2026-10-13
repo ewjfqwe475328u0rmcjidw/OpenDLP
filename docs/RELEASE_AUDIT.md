@@ -1,16 +1,21 @@
-# OpenDLP v0.12.0 — Release audit
+# OpenDLP v0.13.0 — Release audit
 
 ## Verification status
 
 | Area | How it is verified | Status |
 |---|---|---|
-| Server API (enrollment, roles, notifications, policy, charts, deploy page, PDF report, CSV, retention) | 52 automated tests, every push | ✅ |
+| Server API (enrollment, roles, notifications, policy, charts, deploy page, PDF report, CSV, retention) | 61 automated tests, every push | ✅ |
 | Docker image | built in CI, every push | ✅ |
 | Windows agent + watchdog compile, unit tests (detectors, checksums, masking, policy store, ECDSA, DPAPI) | CI on `windows-latest` | ✅ |
 | Windows console E2E: enrollment, DPAPI token, signed policy, telemetry, detection with masking, revocation | `tests/e2e/run-e2e.ps1` | ✅ |
 | Windows fleet/service E2E: `Deploy-OpenDLP.ps1` (checksum refusal, idempotent), service install, `.docx`/`.xlsx`, **printing**, crash recovery, clean uninstall | `tests/e2e/run-service-e2e.ps1` | ✅ |
 | macOS + Linux agent build and console E2E | `run-e2e.ps1` on `macos-latest` / `ubuntu-latest` | ✅ |
 | macOS + Linux fleet/service E2E: `deploy-opendlp.sh`, launchd / systemd, 0600 secrets, detection, restart after crash, uninstall | `tests/e2e/run-unix-service-e2e.ps1` | ✅ |
+| Browser extension in Chromium: enrollment, signed policy, blocked/allowed paste and upload, fingerprinted upload, events | `browser-extension/test/e2e.mjs` in CI | ✅ |
+| Detector parity C# / JavaScript / Python | `tests/vectors/detectors.json` in all three test suites | ✅ |
+| Fingerprint of a renamed copy inside a zip (agents) | `run-e2e.ps1` on Windows, macOS, Linux | ✅ |
+| Cloud drive scanning | simulated Google / Microsoft APIs (`server/tests/test_cloudscan.py`) | ⚠️ not yet run against a real tenant |
+| AI classification | fake Ollama endpoint in unit tests | ⚠️ not run against a real model in CI |
 | USB hardware, interactive clipboard helper, macOS Full Disk Access prompts, long-running stability | real hardware / desktop session needed | ❌ community reports welcome |
 | OS-level blocking | Windows USB `block` dismounts drives (untested on hardware); everything else is audit/alert | ⚠️ |
 

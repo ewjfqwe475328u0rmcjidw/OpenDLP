@@ -22,6 +22,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+import cloudscan
 import report
 
 # Must be set via environment variable; if unset, the API rejects all requests (fail closed).
@@ -60,6 +61,15 @@ RELEASE_REPO = os.environ.get("OPENDLP_RELEASE_REPO", "ewjfqwe475328u0rmcjidw/Op
 # Monthly PDF report: organisation name on the cover, and whether to e-mail it (SMTP settings below) on the 1st.
 ORG_NAME = os.environ.get("OPENDLP_ORG_NAME", "Your organization").strip() or "Your organization"
 REPORT_EMAIL = os.environ.get("OPENDLP_REPORT_EMAIL", "") == "1"
+# Cloud drive scanning (report-only). Google: service-account JSON with domain-wide delegation + an admin to
+# impersonate for the user list. Microsoft 365: app registration with User.Read.All + Files.Read.All (application).
+GOOGLE_SA_FILE = os.environ.get("OPENDLP_GOOGLE_SA_FILE", "").strip()
+GOOGLE_ADMIN = os.environ.get("OPENDLP_GOOGLE_ADMIN_EMAIL", "").strip()
+GOOGLE_DOMAIN = os.environ.get("OPENDLP_GOOGLE_DOMAIN", "").strip()
+M365_TENANT = os.environ.get("OPENDLP_M365_TENANT_ID", "").strip()
+M365_CLIENT_ID = os.environ.get("OPENDLP_M365_CLIENT_ID", "").strip()
+M365_SECRET = os.environ.get("OPENDLP_M365_CLIENT_SECRET", "").strip()
+CLOUD_SCAN_HOURS = int(os.environ.get("OPENDLP_CLOUD_SCAN_HOURS", "24"))
 # Notifications for high/critical alerts: generic JSON webhook (Slack/Discord/Teams/Mattermost/n8n…) and/or SMTP e-mail.
 WEBHOOK_URL = os.environ.get("OPENDLP_WEBHOOK_URL", "").strip()
 NOTIFY_MIN_SEVERITY = os.environ.get("OPENDLP_NOTIFY_MIN_SEVERITY", "high").lower()
@@ -76,9 +86,11 @@ _stop_scheduler = threading.Event()
 
 
 def _report_scheduler() -> None:
-    """Hourly: on/after the 1st, e-mail last month's PDF report once (if enabled)."""
+    """Hourly: monthly report e-mail (if enabled) and cloud drive scan when due."""
     while not _stop_scheduler.wait(3600):
         run_monthly_report_job()
+        if cloud_scan_due():
+            run_cloud_scan()
 
 
 def run_monthly_report_job(now: datetime | None = None) -> str | None:
@@ -103,7 +115,7 @@ async def lifespan(_app: FastAPI):
     _stop_scheduler.set()
 
 
-app = FastAPI(title="OpenDLP Central Server", version="0.12.0", lifespan=lifespan)
+app = FastAPI(title="OpenDLP Central Server", version="0.13.0", lifespan=lifespan)
 _basic = HTTPBasic(auto_error=False)
 
 
@@ -1054,6 +1066,105 @@ def dashboard(
             ],
         },
     )
+
+
+# --------------------------------------------------------------------------- cloud drive scanning
+_cloud_lock = threading.Lock()
+_cloud_status: dict[str, Any] = {"running": False, "last_started": None, "last_finished": None, "results": []}
+
+
+def cloud_sources() -> list[str]:
+    out = []
+    if GOOGLE_SA_FILE and GOOGLE_ADMIN and GOOGLE_DOMAIN:
+        out.append("google")
+    if M365_TENANT and M365_CLIENT_ID and M365_SECRET:
+        out.append("m365")
+    return out
+
+
+def cloud_scan_due(now: datetime | None = None) -> bool:
+    if CLOUD_SCAN_HOURS <= 0 or not cloud_sources() or _cloud_status["running"]:
+        return False
+    last = _cloud_status["last_finished"]
+    now = now or datetime.now(timezone.utc)
+    return last is None or (now - datetime.fromisoformat(last)).total_seconds() >= CLOUD_SCAN_HOURS * 3600
+
+
+def _policy_rules_and_fingerprints() -> tuple[list[dict[str, Any]], dict[str, str]]:
+    try:
+        rules = json.loads(POLICY_PATH.read_text(encoding="utf-8")).get("rules", [])
+    except (OSError, json.JSONDecodeError):
+        rules = []
+    return rules, {f["sha256"]: f["name"] for f in fingerprint_registry()[0]}
+
+
+def record_cloud_result(res: "cloudscan.ScanResult") -> None:
+    agent_id = f"cloud-{res.source}"
+    now = datetime.now(timezone.utc).isoformat()
+    events = [(agent_id, now, "ALERT", "CLOUD_PUBLIC_SHARE", f.message()[:MAX_MESSAGE_LEN], res.source, now) for f in res.findings]
+    events.append((agent_id, now, "WARN" if res.errors else "INFO", "CLOUD_SCAN_SUMMARY",
+                   f"users={res.users} public_files={res.public_files} inspected={res.inspected} "
+                   f"findings={len(res.findings)} errors={len(res.errors)}"
+                   + (" first_error=" + res.errors[0][:300] if res.errors else ""), res.source, now))
+    with _db_lock:
+        conn = db()
+        try:
+            conn.executemany("INSERT INTO events(agent_id, ts, level, event_type, message, host, received_at) VALUES (?, ?, ?, ?, ?, ?, ?)", events)
+            conn.execute(
+                "INSERT INTO agents(agent_id, last_seen, last_event, host, display_name) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(agent_id) DO UPDATE SET last_seen = excluded.last_seen, last_event = excluded.last_event",
+                (agent_id, now, f"cloud scan: {len(res.findings)} findings", res.source,
+                 "Google Drive scan" if res.source == "google" else "Microsoft 365 scan"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    alerts = [{"agent_id": agent_id, "host": res.source, "ts": now, "event_type": "CLOUD_PUBLIC_SHARE", "message": f.message()}
+              for f in res.findings]
+    if alerts:
+        send_notifications(alerts)
+
+
+def run_cloud_scan(http: "cloudscan.Http | None" = None) -> list[dict[str, Any]]:
+    """Scan every configured source once. Returns a summary per source."""
+    if not _cloud_lock.acquire(blocking=False):
+        return [{"source": "all", "error": "a scan is already running"}]
+    _cloud_status.update(running=True, last_started=datetime.now(timezone.utc).isoformat())
+    summaries: list[dict[str, Any]] = []
+    try:
+        rules, fps = _policy_rules_and_fingerprints()
+        h = http or cloudscan.default_http
+        for src in cloud_sources():
+            try:
+                if src == "google":
+                    sa = json.loads(Path(GOOGLE_SA_FILE).read_text(encoding="utf-8"))
+                    res = cloudscan.scan_google(sa, GOOGLE_ADMIN, GOOGLE_DOMAIN, rules, fps, h)
+                else:
+                    res = cloudscan.scan_m365(M365_TENANT, M365_CLIENT_ID, M365_SECRET, rules, fps, h)
+                record_cloud_result(res)
+                summaries.append({"source": src, "users": res.users, "public_files": res.public_files,
+                                  "inspected": res.inspected, "findings": len(res.findings), "errors": res.errors[:5]})
+            except Exception as exc:  # noqa: BLE001 - report and continue with the next source
+                summaries.append({"source": src, "error": str(exc)[:300]})
+    finally:
+        _cloud_status.update(running=False, last_finished=datetime.now(timezone.utc).isoformat(), results=summaries)
+        _cloud_lock.release()
+    return summaries
+
+
+@app.get("/api/v1/admin/cloudscan")
+def cloudscan_status(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
+    return {"sources": cloud_sources(), "interval_hours": CLOUD_SCAN_HOURS, **_cloud_status}
+
+
+@app.post("/api/v1/admin/cloudscan/run")
+def cloudscan_run(_admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    if not cloud_sources():
+        raise HTTPException(status_code=409, detail="No cloud source configured (see docs/CLOUD-SCAN.md)")
+    if _cloud_status["running"]:
+        raise HTTPException(status_code=409, detail="A scan is already running")
+    threading.Thread(target=run_cloud_scan, daemon=True, name="opendlp-cloudscan").start()
+    return {"started": True, "sources": cloud_sources()}
 
 
 _SHA256_RX = re.compile(r"^[0-9a-fA-F]{64}$")

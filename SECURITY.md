@@ -1,4 +1,4 @@
-# Security Policy & Threat Model (OpenDLP v0.12.0)
+# Security Policy & Threat Model (OpenDLP v0.13.0)
 
 ## 1. Product scope
 

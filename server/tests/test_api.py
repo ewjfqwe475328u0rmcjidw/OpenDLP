@@ -653,3 +653,14 @@ def test_policy_validation_new_fields():
     errs = " | ".join(main.validate_policy(bad))
     for frag in ("requireContext", "exclude pattern", "browser.mode", "ai.endpoint", "fingerprints"):
         assert frag in errs
+
+
+def test_cloudscan_endpoints(client, monkeypatch):
+    c, token = client
+    for k in ("GOOGLE_SA_FILE", "M365_TENANT"):
+        monkeypatch.setattr(main, k, "")
+    st = c.get("/api/v1/admin/cloudscan", headers=viewer()).json()
+    assert st["sources"] == [] and st["running"] is False
+    assert c.post("/api/v1/admin/cloudscan/run", headers=admin()).status_code == 409   # nothing configured
+    assert c.post("/api/v1/admin/cloudscan/run", headers=viewer()).status_code == 403
+    assert c.get("/api/v1/admin/cloudscan", headers=headers(token)).status_code == 403

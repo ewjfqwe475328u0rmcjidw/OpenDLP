@@ -1,4 +1,4 @@
-# OpenDLP v0.12.0
+# OpenDLP v0.13.0
 
 開源 **端點稽核／偵測 MVP**（Windows Agent + Watchdog + FastAPI 中央伺服器）。目前定位是 **audit-first prototype**，不是已完成的商用 DLP。
 
