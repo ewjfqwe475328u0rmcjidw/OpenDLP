@@ -22,6 +22,7 @@
     <Compile Include="..\agent\FileMonitor.cs" Link="shared\FileMonitor.cs" />
     <Compile Include="..\agent\Heuristics.cs" Link="shared\Heuristics.cs" />
     <Compile Include="..\agent\Logging.cs" Link="shared\Logging.cs" />
+    <Compile Include="..\agent\Ocr.cs" Link="shared\Ocr.cs" />
     <Compile Include="..\agent\Policy.cs" Link="shared\Policy.cs" />
     <Compile Include="..\agent\Scanner.cs" Link="shared\Scanner.cs" />
     <Compile Include="..\agent\Telemetry.cs" Link="shared\Telemetry.cs" />

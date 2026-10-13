@@ -4,7 +4,7 @@
 
 | Area | How it is verified | Status |
 |---|---|---|
-| Server API (enrollment, roles, notifications, policy, charts, deploy page, PDF report, CSV, retention) | 80 automated tests, every push | ✅ |
+| Server API (enrollment, roles, notifications, policy, charts, deploy page, PDF report, CSV, retention) | 84 automated tests, every push | ✅ |
 | Docker image | built in CI, every push | ✅ |
 | Windows agent + watchdog compile, unit tests (detectors, checksums, masking, policy store, ECDSA, DPAPI) | CI on `windows-latest` | ✅ |
 | Windows console E2E: enrollment, DPAPI token, signed policy, telemetry, detection with masking, revocation | `tests/e2e/run-e2e.ps1` | ✅ |
@@ -16,6 +16,9 @@
 | Fingerprint of a renamed copy inside a zip (agents) | `run-e2e.ps1` on Windows, macOS, Linux | ✅ |
 | Cloud drive scanning | simulated Google / Microsoft APIs (`server/tests/test_cloudscan.py`) | ⚠️ not yet run against a real tenant |
 | AI classification | fake Ollama endpoint in unit tests | ⚠️ not run against a real model in CI |
+| OCR (images) | Tesseract end-to-end on Linux CI (screenshot with a card number → `IMAGE_CONTENT_MATCH`); Windows OCR unit test runs when the runner has an OCR language | ⚠️ Windows OCR depends on installed languages; macOS not in CI |
+| Screen watermark | template, opacity limits and click-through window styles (unit tests) | ⚠️ visual appearance not verified automatically |
+| Outbound e-mail scanning | simulated Microsoft Graph and Gmail APIs (`server/tests/test_emailscan.py`) | ⚠️ not yet run against a real tenant |
 | Tamper-evident log | edit / delete / truncate / forged unkeyed chain / retention purge (`server/tests/test_enterprise.py`) | ✅ |
 | SIEM forwarding | real UDP and TCP sockets, CEF escaping, unreachable SIEM | ✅ (TLS path and real SIEM products not tested) |
 | Group policies | overlay merge, assignment, version bump, dashboard | ✅ |

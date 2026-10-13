@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 import audit
 import cloudscan
+import emailscan
 import report
 import siem
 import sso
@@ -73,6 +74,9 @@ M365_TENANT = os.environ.get("OPENDLP_M365_TENANT_ID", "").strip()
 M365_CLIENT_ID = os.environ.get("OPENDLP_M365_CLIENT_ID", "").strip()
 M365_SECRET = os.environ.get("OPENDLP_M365_CLIENT_SECRET", "").strip()
 CLOUD_SCAN_HOURS = int(os.environ.get("OPENDLP_CLOUD_SCAN_HOURS", "24"))
+# Outbound e-mail scanning (report-only): reuses the cloud credentials above plus Mail.Read / gmail.readonly.
+EMAIL_SCAN = os.environ.get("OPENDLP_EMAIL_SCAN", "") == "1"
+EMAIL_INTERNAL_DOMAINS = {d.strip().lower().lstrip("@") for d in os.environ.get("OPENDLP_EMAIL_INTERNAL_DOMAINS", "").split(",") if d.strip()}
 # Notifications for high/critical alerts: generic JSON webhook (Slack/Discord/Teams/Mattermost/n8n…) and/or SMTP e-mail.
 WEBHOOK_URL = os.environ.get("OPENDLP_WEBHOOK_URL", "").strip()
 NOTIFY_MIN_SEVERITY = os.environ.get("OPENDLP_NOTIFY_MIN_SEVERITY", "high").lower()
@@ -109,6 +113,8 @@ def _report_scheduler() -> None:
         run_monthly_report_job()
         if cloud_scan_due():
             run_cloud_scan()
+        if EMAIL_SCAN and cloud_sources():
+            run_email_scan()
 
 
 def run_monthly_report_job(now: datetime | None = None) -> str | None:
@@ -683,6 +689,19 @@ def validate_policy(obj: Any) -> list[str]:
     ai = obj.get("ai") or {}
     if ai.get("enabled") and not str(ai.get("endpoint", "")).startswith(("http://", "https://")):
         errs.append("ai.endpoint must be an http(s) URL when ai.enabled is true")
+    ocr = obj.get("ocr") or {}
+    if not re.fullmatch(r"[A-Za-z_]{2,16}(\+[A-Za-z_]{2,16}){0,7}", str(ocr.get("languages", "eng"))):
+        errs.append("ocr.languages must be Tesseract codes joined with '+', e.g. 'eng+chi_tra'")
+    if not isinstance(ocr.get("maxPerMinute", 30), int) or not 1 <= ocr.get("maxPerMinute", 30) <= 600:
+        errs.append("ocr.maxPerMinute must be an integer between 1 and 600")
+    wm = obj.get("watermark") or {}
+    op = wm.get("opacity", 0.08)
+    if not isinstance(op, (int, float)) or not 0.03 <= op <= 0.35:
+        errs.append("watermark.opacity must be between 0.03 and 0.35")
+    if not isinstance(wm.get("text", ""), str) or len(wm.get("text", "")) > 120:
+        errs.append("watermark.text must be a string of at most 120 characters")
+    if not isinstance(wm.get("fontSize", 16), int) or not 8 <= wm.get("fontSize", 16) <= 48:
+        errs.append("watermark.fontSize must be an integer between 8 and 48")
     if "fingerprints" in obj:
         errs.append("'fingerprints' is managed by the server registry (/api/v1/admin/fingerprints); remove it from the policy file")
     return errs
@@ -1314,6 +1333,108 @@ def run_cloud_scan(http: "cloudscan.Http | None" = None) -> list[dict[str, Any]]
         _cloud_status.update(running=False, last_finished=datetime.now(timezone.utc).isoformat(), results=summaries)
         _cloud_lock.release()
     return summaries
+
+
+# --------------------------------------------------------------------------- outbound e-mail scanning
+_email_lock = threading.Lock()
+_email_status: dict[str, Any] = {"running": False, "last_started": None, "last_finished": None, "results": []}
+
+
+def _meta_get(key: str) -> str | None:
+    with _db_lock:
+        conn = db()
+        try:
+            r = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        finally:
+            conn.close()
+    return r["value"] if r else None
+
+
+def _meta_set(key: str, value: str) -> None:
+    with _db_lock:
+        conn = db()
+        try:
+            conn.execute("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def record_email_result(res: "emailscan.EmailScanResult") -> None:
+    agent_id = f"email-{res.source}"
+    now = datetime.now(timezone.utc).isoformat()
+    rows = [(agent_id, f.sent_at or now, "ALERT", "EMAIL_EXTERNAL_SENSITIVE", f.message()[:MAX_MESSAGE_LEN], res.source, now)
+            for f in res.findings]
+    rows.append((agent_id, now, "WARN" if res.errors else "INFO", "EMAIL_SCAN_SUMMARY",
+                 f"users={res.users} messages={res.messages} external={res.external_messages} findings={len(res.findings)} "
+                 f"errors={len(res.errors)}" + (" first_error=" + res.errors[0][:300] if res.errors else ""), res.source, now))
+    with _db_lock:
+        conn = db()
+        try:
+            stored = store_events(conn, [(a, _clean_ts(ts, now), lv, et, m, h, r) for a, ts, lv, et, m, h, r in rows])
+            conn.execute(
+                "INSERT INTO agents(agent_id, last_seen, last_event, host, display_name) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(agent_id) DO UPDATE SET last_seen = excluded.last_seen, last_event = excluded.last_event",
+                (agent_id, now, f"e-mail scan: {len(res.findings)} findings", res.source,
+                 "Gmail outbound scan" if res.source == "google" else "Microsoft 365 outbound mail scan"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    forward_events(stored)
+    alerts = [{"agent_id": agent_id, "host": res.source, "ts": now, "event_type": "EMAIL_EXTERNAL_SENSITIVE", "message": f.message()}
+              for f in res.findings]
+    if alerts:
+        send_notifications(alerts)
+
+
+def run_email_scan(http: "cloudscan.Http | None" = None, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Scan mail sent since the previous run (first run: last 24 hours) for every configured source."""
+    if not _email_lock.acquire(blocking=False):
+        return [{"source": "all", "error": "a scan is already running"}]
+    start = now or datetime.now(timezone.utc)
+    _email_status.update(running=True, last_started=start.isoformat())
+    summaries: list[dict[str, Any]] = []
+    try:
+        rules, fps = _policy_rules_and_fingerprints()
+        h = http or cloudscan.default_http
+        for src in cloud_sources():
+            key = f"email_since_{src}"
+            prev = _meta_get(key)
+            since = datetime.fromisoformat(prev) if prev else start - timedelta(hours=24)
+            try:
+                if src == "google":
+                    sa = json.loads(Path(GOOGLE_SA_FILE).read_text(encoding="utf-8"))
+                    res = emailscan.scan_google(sa, GOOGLE_ADMIN, GOOGLE_DOMAIN, since, EMAIL_INTERNAL_DOMAINS, rules, fps, h)
+                else:
+                    res = emailscan.scan_m365(M365_TENANT, M365_CLIENT_ID, M365_SECRET, since, EMAIL_INTERNAL_DOMAINS, rules, fps, h)
+                record_email_result(res)
+                if not res.errors:
+                    _meta_set(key, start.isoformat())  # failed mailboxes are retried next time
+                summaries.append({"source": src, "since": since.isoformat(), "users": res.users, "messages": res.messages,
+                                  "external": res.external_messages, "findings": len(res.findings), "errors": res.errors[:5]})
+            except Exception as exc:  # noqa: BLE001
+                summaries.append({"source": src, "error": str(exc)[:300]})
+    finally:
+        _email_status.update(running=False, last_finished=datetime.now(timezone.utc).isoformat(), results=summaries)
+        _email_lock.release()
+    return summaries
+
+
+@app.get("/api/v1/admin/emailscan")
+def emailscan_status(_role: str = Depends(viewer_auth)) -> dict[str, Any]:
+    return {"enabled": EMAIL_SCAN, "sources": cloud_sources() if EMAIL_SCAN else [], **_email_status}
+
+
+@app.post("/api/v1/admin/emailscan/run")
+def emailscan_run(_admin: str = Depends(admin_auth)) -> dict[str, Any]:
+    if not EMAIL_SCAN or not cloud_sources():
+        raise HTTPException(status_code=409, detail="E-mail scanning is not enabled (see docs/EMAIL-SCAN.md)")
+    if _email_status["running"]:
+        raise HTTPException(status_code=409, detail="A scan is already running")
+    threading.Thread(target=run_email_scan, daemon=True, name="opendlp-emailscan").start()
+    record_admin_action("api-admin-token", "emailscan_run", "sources=" + ",".join(cloud_sources()))
+    return {"started": True, "sources": cloud_sources()}
 
 
 @app.get("/api/v1/admin/cloudscan")

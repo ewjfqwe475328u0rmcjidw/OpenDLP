@@ -35,6 +35,8 @@ Verify downloads with `SHA256SUMS.txt` from the same release.
 - **File fingerprints:** register confidential files; exact copies are recognised everywhere, even renamed or inside a zip.
 - **Cloud drive scanning (report-only):** Google Workspace and Microsoft 365 files shared with "anyone with the link" that contain sensitive data. See [docs/CLOUD-SCAN.md](docs/CLOUD-SCAN.md).
 - **Optional AI classification** with a model you host yourself. See [docs/AI-CLASSIFICATION.md](docs/AI-CLASSIFICATION.md).
+- **Text in images (OCR):** screenshots and photos of ID cards are read on the device (built-in Windows OCR, Tesseract on macOS/Linux). **Screen watermark** (Windows) with user, host and date. See [docs/OCR-AND-WATERMARK.md](docs/OCR-AND-WATERMARK.md).
+- **Outbound e-mail scanning (report-only):** mail sent outside the organisation with sensitive data or fingerprinted attachments (Microsoft 365, Gmail). See [docs/EMAIL-SCAN.md](docs/EMAIL-SCAN.md).
 - **Audit & enterprise integration:** tamper-evident (HMAC-chained) event and admin-action log, SIEM forwarding (syslog CEF/JSON over UDP/TCP/TLS), department/group policies, dashboard single sign-on with Microsoft Entra ID, Google, Okta or any OpenID Connect provider. See [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
 - **macOS / Linux agent:** same detection engine, removable-volume auditing, launchd / systemd service with automatic restart.
 - **Watchdog (Windows):** restarts the service when it stops or its heartbeat goes stale.
@@ -60,7 +62,7 @@ OpenDLP/
 
 ## Requirements
 
-- Windows agent: Windows 10/11 x64 (release packages are self-contained). Building from source: .NET 8 SDK.
+- Windows agent: Windows 10 (1809 or later) / 11 x64 (release packages are self-contained). Building from source: .NET 8 SDK.
 - macOS agent: macOS 12+ (Apple Silicon or Intel). Linux agent: x64 with systemd.
 - Server: Python 3.10+.
 
@@ -112,6 +114,7 @@ Dashboard: <http://127.0.0.1:8000/> (HTTP Basic, user `admin`). Use HTTPS (e.g. 
 | `GET/POST /api/v1/admin/fingerprints`, `DELETE …/{sha256}` | viewer / admin | Confidential-file fingerprint registry |
 | `GET /api/v1/admin/cloudscan`, `POST …/cloudscan/run` | viewer / admin | Cloud drive scan status / run now |
 | `GET /api/v1/admin/groups`, `PUT/DELETE …/groups/{name}`, `POST …/agents/{id}/group`, `GET …/agents/{id}/effective-policy` | viewer / admin | Department / group policies |
+| `GET /api/v1/admin/emailscan`, `POST …/emailscan/run` | viewer / admin | Outbound e-mail scan status / run now |
 | `GET /api/v1/admin/audit/verify` | viewer / admin | Verify the tamper-evident log |
 | `GET /api/v1/admin/siem` | viewer / admin | SIEM forwarding status |
 | `GET /health` | none | Liveness check |
@@ -172,9 +175,19 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push: server tests, Do
 
 For manual Windows testing, also cover: valid/invalid token, bad policy signature, offline retry, log retention, helper IPC permissions, and service start/stop.
 
-## Hosted version (planned)
+## Hosted version and pricing (planned)
 
-Don't want to run a server? We're considering a hosted OpenDLP: **Team $50/month** (up to 25 endpoints), **Business $100/month** (up to 100), annual billing at 10 months' price. If you'd use it, [tell us here](../../issues/new?template=hosted-interest.yml) - nothing to pay now. The open-source edition stays free and complete.
+Don't want to run a server? A hosted OpenDLP (server, updates, backups, monthly reports, e-mail support) is planned. Prices are fixed and public - no sales call needed:
+
+| Plan | Endpoints | Monthly | Yearly (10 months' price) |
+|---|---|---|---|
+| Team | up to 25 | $50 | $500 |
+| Business | up to 100 | $100 | $1,000 |
+| Scale | over 100 | $1 per endpoint | $10 per endpoint |
+
+Scale examples: 200 endpoints = $200/month or $2,000/year; 500 = $500/month or $5,000/year; 1,000 = $1,000/month or $10,000/year. Endpoints are counted in steps of 10 (e.g. 143 endpoints are billed as 150). Prices in USD, excluding local taxes.
+
+If you'd use it, [tell us here](../../issues/new?template=hosted-interest.yml) - nothing to pay now. The open-source edition stays free and complete; every feature above is in it.
 
 ## Contributing
 

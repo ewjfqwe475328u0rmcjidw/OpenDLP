@@ -14,6 +14,18 @@ public sealed class PolicyDoc
     /// <summary>Exact-match fingerprints of confidential files (added by the server from its registry).</summary>
     public List<Fingerprint> Fingerprints { get; set; } = new();
     public AiPolicy Ai { get; set; } = new();
+    public OcrPolicy Ocr { get; set; } = new();
+    public WatermarkPolicy Watermark { get; set; } = new();
+}
+
+/// <summary>Visible on-screen watermark (Windows): deters photographing or screen-sharing confidential data.</summary>
+public sealed class WatermarkPolicy
+{
+    public bool Enabled { get; set; }
+    /// <summary>Placeholders: {user} {host} {date} {time}</summary>
+    public string Text { get; set; } = "{user} · {host} · {date}";
+    public double Opacity { get; set; } = 0.08;
+    public int FontSize { get; set; } = 16;
 }
 
 public sealed class Fingerprint

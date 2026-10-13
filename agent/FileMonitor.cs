@@ -142,7 +142,9 @@ public sealed class FileMonitor : IDisposable
             CheckFingerprints(path, usb);
 
             if (TextExtractor.IsSupported(path))
-                await ScanContentAsync(path, usb);
+                await ScanContentAsync(path, usb, ocr: false);
+            else if (Ocr.IsImage(path) && _scanner.Policy.Current.Ocr.Enabled)
+                await ScanContentAsync(path, usb, ocr: true);
         }
         catch (Exception ex)
         {
@@ -150,7 +152,7 @@ public sealed class FileMonitor : IDisposable
         }
     }
 
-    private async Task ScanContentAsync(string path, bool usb)
+    private async Task ScanContentAsync(string path, bool usb, bool ocr)
     {
         var now = DateTime.UtcNow;
         if (_lastScan.TryGetValue(path, out var last) && (now - last).TotalSeconds < 60) return;
@@ -162,7 +164,9 @@ public sealed class FileMonitor : IDisposable
         await _scanGate.WaitAsync();
         try
         {
-            var text = TextExtractor.Extract(path, _maxScanBytes);
+            var text = ocr
+                ? await Ocr.RecognizeAsync(path, _scanner.Policy.Current.Ocr, CancellationToken.None)
+                : TextExtractor.Extract(path, _maxScanBytes);
             if (text == null) return;
 
             var hits = _scanner.Scan(text);
@@ -172,8 +176,8 @@ public sealed class FileMonitor : IDisposable
                 return;
             }
 
-            var type = usb ? "USB_FILE_CONTENT" : "CONTENT_MATCH";
-            var msg = $"{ContentScanner.Summarize(hits)} file={path}";
+            var type = ocr ? (usb ? "USB_IMAGE_CONTENT" : "IMAGE_CONTENT_MATCH") : (usb ? "USB_FILE_CONTENT" : "CONTENT_MATCH");
+            var msg = $"{ContentScanner.Summarize(hits)}{(ocr ? " source=ocr" : "")} file={path}";
             if (hits.Any(h => h.Action is "alert" or "block")) _logger.Alert(type, msg);
             else _logger.Info(type, msg);
         }

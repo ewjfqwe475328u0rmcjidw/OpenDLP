@@ -104,6 +104,9 @@ public sealed class AgentWorker : BackgroundService
                 var clip = new ClipboardMonitor(logger, policy, scanner);
                 disposables.Add(clip);
                 clip.Start();
+                var watermark = new ScreenWatermark(policy, logger);
+                disposables.Add(watermark);
+                watermark.Start();
             }
 
             try { await Task.Delay(Timeout.Infinite, ct); }
@@ -136,6 +139,9 @@ public sealed class AgentWorker : BackgroundService
         var clip = new ClipboardMonitor(logger, policy, scanner);
         disposables.Add(clip);
         clip.Start();
+        var watermark = new ScreenWatermark(policy, logger);
+        disposables.Add(watermark);
+        watermark.Start();
         logger.Info("HELPER", "User-session helper started");
 
         // The helper cannot verify signatures (it has no token); it trusts the ACL-protected cache the service writes.

@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         We're considering a **hosted OpenDLP**: we run the server, backups, HTTPS and updates; you only install agents.
-        Planned pricing: **Team $50/month** (up to 25 endpoints), **Business $100/month** (up to 100), annual billing at 10 months' price, larger fleets on request.
+        Planned pricing: **Team $50/month** (up to 25 endpoints), **Business $100/month** (up to 100), over 100 endpoints $1 per endpoint per month; annual billing at 10 months' price.
         Nothing to pay now. **This issue is public** - don't post anything confidential.
   - type: dropdown
     id: size

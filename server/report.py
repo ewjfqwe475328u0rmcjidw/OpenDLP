@@ -129,6 +129,8 @@ def collect(conn: sqlite3.Connection, month: str | None, offline_after: timedelt
             ("Copies of registered confidential files", cat("FINGERPRINT_MATCH", "USB_FINGERPRINT_MATCH")),
             ("Publicly shared cloud files with sensitive data", cat("CLOUD_PUBLIC_SHARE")),
             ("AI-classified confidential documents", cat("AI_CLASSIFIED", "USB_AI_CLASSIFIED")),
+            ("Sensitive text in images (OCR)", cat("IMAGE_CONTENT_MATCH", "USB_IMAGE_CONTENT")),
+            ("Sensitive data e-mailed outside the organisation", cat("EMAIL_EXTERNAL_SENSITIVE")),
             ("Rejected policy signatures", cat("POLICY_SIG_INVALID")),
         ],
         "top_rules": rules.most_common(10),

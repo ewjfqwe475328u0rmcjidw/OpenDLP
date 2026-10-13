@@ -48,6 +48,9 @@ internal static class Program
         Console.WriteLine("Use only on an authorized test device. Do not rely on this agent as your only data-loss-prevention control.");
         Console.WriteLine($"Mode: {mode}\n");
 
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
+            Ocr.PlatformEngine = WindowsOcr.RecognizeAsync;
+
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddSingleton(config);
         builder.Services.AddSingleton(new RunContext(mode));

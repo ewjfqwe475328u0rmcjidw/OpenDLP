@@ -153,5 +153,17 @@
     "model": "llama3.2:3b",
     "maxChars": 4000,
     "action": "alert"
+  },
+  "ocr": {
+    "enabled": true,
+    "languages": "eng",
+    "maxImageBytes": 20971520,
+    "maxPerMinute": 30
+  },
+  "watermark": {
+    "enabled": false,
+    "text": "{user} · {host} · {date}",
+    "opacity": 0.08,
+    "fontSize": 16
   }
 }

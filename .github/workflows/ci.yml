@@ -76,8 +76,13 @@ jobs:
       - name: Build agent (macOS / Linux)
         shell: pwsh
         run: ./tools/ci/run.ps1 "dotnet build agent-unix/OpenDLP.Agent.Unix.csproj -c Release"
+      - name: Install Tesseract OCR (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q tesseract-ocr
       - name: End-to-end test (console)
         shell: pwsh
+        env:
+          OPENDLP_E2E_OCR: ${{ runner.os == 'Linux' && '1' || '0' }}
         run: ./tests/e2e/run-e2e.ps1 -AgentExe agent-unix/bin/Release/net8.0/opendlp-agent
       - name: Publish release layout
         shell: pwsh

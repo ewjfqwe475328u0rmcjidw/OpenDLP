@@ -7,7 +7,7 @@ End-to-end test on a clean Windows machine (used by CI on GitHub's windows-lates
  4. verify revocation blocks the agent
 Every failure is printed as a GitHub annotation together with the tail of the agent and server logs.
 #>
-param([string]$AgentExe = "agent/bin/Release/net8.0-windows/OpenDLP.Agent.exe")
+param([string]$AgentExe = "agent/bin/Release/net8.0-windows10.0.19041.0/OpenDLP.Agent.exe")
 # Cross-platform: the same test drives the Windows agent and the macOS/Linux agent (agent-unix).
 $ErrorActionPreference = "Stop"
 # Exit codes of native commands are checked explicitly (some calls are EXPECTED to fail).
@@ -131,6 +131,15 @@ $fp = Wait-Until { Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&even
 if ($fp.message -notmatch 'Board plan' -or $fp.message -notmatch 'vacation\.zip') { Fail "unexpected fingerprint event: $($fp.message)" }
 Write-Host "fingerprint event: $($fp.message)"
 
+# 4b. OCR: card number inside a screenshot (only where an OCR engine is installed; CI installs Tesseract on Linux)
+if ($env:OPENDLP_E2E_OCR -eq "1") {
+    Copy-Item (Join-Path $root "tests/e2e/fixtures/card-screenshot.png") (Join-Path $work "watch/screenshot-2026.png")
+    $ocr = Wait-Until { Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=IMAGE_CONTENT_MATCH" -Headers $H | ForEach-Object { $_ } | Select-Object -First 1 } 90 "IMAGE_CONTENT_MATCH from OCR of a screenshot"
+    if ($ocr.message -notmatch 'CREDIT-CARD' -or $ocr.message -notmatch 'source=ocr') { Fail "unexpected OCR event: $($ocr.message)" }
+    if ($ocr.message -match '4111 1111') { Fail "raw card number leaked into the OCR event" }
+    Write-Host "ocr event: $($ocr.message)"
+}
+
 # 5. revocation
 Invoke-RestMethod -Method Post "$base/api/v1/admin/agents/$agentId/revoke" -Headers $H | Out-Null
 $before = (Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&limit=500" -Headers $H).Count
@@ -143,6 +152,6 @@ Write-Output "ok: revoked agent is rejected"
 Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "E2E PASSED"
-"## OpenDLP end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- fingerprint match of a renamed copy inside a zip`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## OpenDLP end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- fingerprint match of a renamed copy inside a zip`n- OCR of a screenshot: $(if ($env:OPENDLP_E2E_OCR -eq '1') { 'tested' } else { 'not run on this OS' })`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 # The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
 exit 0
