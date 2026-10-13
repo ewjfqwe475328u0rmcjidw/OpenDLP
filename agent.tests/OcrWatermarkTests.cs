@@ -74,11 +74,15 @@ public class OcrTests
         }
         var variants = new (string Name, string[] Lines, int Px, int Gap)[]
         {
-            ("two-lines-40", new[] { "Customer payment details", "Card: 4111 1111 1111 1111" }, 40, 70),
-            ("two-lines-tight", new[] { "Customer payment details", "Card: 4111 1111 1111 1111" }, 32, 12),
-            ("card-only", new[] { "Card: 4111 1111 1111 1111" }, 32, 12),
-            ("words-and-number", new[] { "Visa card number 4111 1111 1111 1111 expires 12/29" }, 28, 12),
-            ("three-lines", new[] { "Customer: Alice Chen", "Card number: 4111 1111 1111 1111", "Expiry 12/29" }, 28, 14),
+            ("order", new[] { "Order 1234 5678" }, 32, 12),
+            ("phone", new[] { "Phone 0912 345 678" }, 32, 12),
+            ("twid", new[] { "ID A123456789" }, 32, 12),
+            ("nonluhn", new[] { "Card 4111 1111 1111 1112" }, 32, 12),
+            ("digits14", new[] { "Account 12345678901234" }, 32, 12),
+            ("card-nospace", new[] { "Card 4111111111111111" }, 32, 12),
+            ("card-dash", new[] { "Card 4111-1111-1111-1111" }, 32, 12),
+            ("ssn", new[] { "SSN 123-45-6789" }, 32, 12),
+            ("iban", new[] { "IBAN GB82 WEST 1234 5698 7654 32" }, 32, 12),
         };
         var report = new List<string>();
         foreach (var v in variants)
