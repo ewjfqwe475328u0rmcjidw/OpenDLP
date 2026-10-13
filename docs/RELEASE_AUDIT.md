@@ -16,7 +16,7 @@
 | Fingerprint of a renamed copy inside a zip (agents) | `run-e2e.ps1` on Windows, macOS, Linux | ✅ |
 | Cloud drive scanning | simulated Google / Microsoft APIs (`server/tests/test_cloudscan.py`) | ⚠️ not yet run against a real tenant |
 | AI classification | fake Ollama endpoint in unit tests | ⚠️ not run against a real model in CI |
-| OCR (images) | Tesseract end-to-end on Linux CI (screenshot with a card number → `IMAGE_CONTENT_MATCH`); Windows OCR unit test runs when the runner has an OCR language | ⚠️ Windows OCR depends on installed languages; macOS not in CI |
+| OCR (images) | Tesseract end-to-end on Linux CI (screenshot with a card number → `IMAGE_CONTENT_MATCH`); Windows built-in OCR reads ID / IBAN / SSN in CI and is confirmed to omit card numbers (Tesseract recommended on Windows for cards) | ⚠️ macOS not in CI |
 | Screen watermark | template, opacity limits and click-through window styles (unit tests) | ⚠️ visual appearance not verified automatically |
 | Outbound e-mail scanning | simulated Microsoft Graph and Gmail APIs (`server/tests/test_emailscan.py`) | ⚠️ not yet run against a real tenant |
 | Tamper-evident log | edit / delete / truncate / forged unkeyed chain / retention purge (`server/tests/test_enterprise.py`) | ✅ |

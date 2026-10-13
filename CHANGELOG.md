@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.13.0 — browser extension, fingerprints, cloud and e-mail scanning, OCR, audit trail, SSO
-- **Text in images (OCR)**: screenshots, photos and scans in watched folders and on USB drives are read on the device (built-in Windows OCR; Tesseract on macOS/Linux) and checked with the same rules → `IMAGE_CONTENT_MATCH`. On by default, rate-limited. Tested end-to-end with Tesseract on Linux in CI.
+- **Text in images (OCR)**: screenshots, photos and scans in watched folders and on USB drives are read on the device (built-in Windows OCR; Tesseract on macOS/Linux) and checked with the same rules → `IMAGE_CONTENT_MATCH`. On by default, rate-limited. Tested end-to-end with Tesseract on Linux in CI. Windows' built-in OCR omits payment-card numbers by design, so Tesseract is used first when installed.
 - **Screen watermark (Windows)**: faint, click-through `{user} · {host} · {date}` tiled across all monitors; off by default, ideal per department via group policies.
 - **Outbound e-mail scanning (report-only)**: Microsoft 365 and Gmail messages sent to external recipients with sensitive data or fingerprinted attachments → `EMAIL_EXTERNAL_SENSITIVE`. Tested against simulated APIs; see docs/EMAIL-SCAN.md.
 - Windows agent now targets `net8.0-windows10.0.19041.0` (Windows 10 1809 or later) for the built-in OCR engine.

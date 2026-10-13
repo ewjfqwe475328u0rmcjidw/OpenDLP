@@ -54,16 +54,18 @@ public static class Ocr
         if (!info.Exists || info.Length == 0 || info.Length > policy.MaxImageBytes) return null;
         if (!TryAcquire(policy.MaxPerMinute)) return null;
 
+        // Tesseract first when installed: Windows' built-in OCR deliberately omits payment-card numbers.
+        if (FindTesseract() != null)
+        {
+            var text = await TesseractAsync(path, policy.Languages, ct);
+            if (text != null) return text;
+        }
         if (PlatformEngine != null)
         {
-            try
-            {
-                var text = await PlatformEngine(path, ct);
-                if (text != null) return text;
-            }
-            catch (Exception) { /* fall back to Tesseract */ }
+            try { return await PlatformEngine(path, ct); }
+            catch (Exception) { return null; }
         }
-        return await TesseractAsync(path, policy.Languages, ct);
+        return null;
     }
 
     private static string? _tesseract;

@@ -12,7 +12,14 @@ With OCR the agent reads the text **on the device** and applies the same rules; 
 | Linux | Tesseract | `sudo apt install tesseract-ocr` (add e.g. `tesseract-ocr-chi-tra` for other languages) |
 | macOS | Tesseract | `brew install tesseract tesseract-lang` |
 
-Windows also falls back to Tesseract if it is installed. Without any engine, images are simply skipped.
+When Tesseract is installed it is used on every platform, including Windows. Without any engine, images are
+simply skipped.
+
+> **Payment cards on Windows:** the built-in Windows OCR deliberately leaves out lines containing card-like
+> 16-digit numbers (verified in CI). It reads national IDs, SSNs, IBANs, passport numbers, phone numbers and
+> keywords normally. To detect card numbers in images on Windows, install Tesseract
+> (e.g. `winget install UB-Mannheim.TesseractOCR`); the agent finds it in `C:\Program Files\Tesseract-OCR`
+> automatically.
 
 Policy (on by default):
 

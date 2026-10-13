@@ -72,22 +72,24 @@ public class OcrTests
             _out.WriteLine("Windows OCR engine not available on this machine (no OCR language installed); skipped.");
             return;
         }
-        var variants = new (string Name, string[] Lines, int Px, int Gap)[]
-        {
-            ("order", new[] { "Order 1234 5678" }, 32, 12),
-            ("phone", new[] { "Phone 0912 345 678" }, 32, 12),
-            ("twid", new[] { "ID A123456789" }, 32, 12),
-            ("nonluhn", new[] { "Card 4111 1111 1111 1112" }, 32, 12),
-            ("digits14", new[] { "Account 12345678901234" }, 32, 12),
-            ("card-nospace", new[] { "Card 4111111111111111" }, 32, 12),
-            ("card-dash", new[] { "Card 4111-1111-1111-1111" }, 32, 12),
-            ("ssn", new[] { "SSN 123-45-6789" }, 32, 12),
-            ("iban", new[] { "IBAN GB82 WEST 1234 5698 7654 32" }, 32, 12),
-        };
-        var report = new List<string>();
-        foreach (var v in variants)
-            report.Add($"{v.Name}=[{await OcrOf(v.Lines, v.Px, v.Gap)}]");
-        throw new Xunit.Sdk.XunitException("OCR text: " + string.Join(" ;; ", report));
+        var text = await OcrOf(new[] { "Employee record", "National ID A123456789", "IBAN GB82 WEST 1234 5698 7654 32", "SSN 123-45-6789" }, 32, 14);
+        _out.WriteLine($"OCR text: {text}");
+        var policy = new PolicyStore(Path.Combine(Path.GetTempPath(), "none.json"), Path.Combine(AppContext.BaseDirectory, "policy.default.json"));
+        policy.LoadFromDisk();
+        var ids = new ContentScanner(policy).Scan(text).Select(h => h.RuleId).ToList();
+        foreach (var rule in new[] { "TW-NID", "IBAN", "US-SSN" })
+            Assert.True(ids.Contains(rule), $"OCR text: [{text}] rules: [{string.Join(",", ids)}] missing {rule}");
+    }
+
+    /// <summary>Windows' own OCR deliberately leaves out lines with card-like 16-digit numbers (observed on
+    /// Windows Server 2022 / Windows 11). Documented here so a change in Windows behaviour is noticed.</summary>
+    [Fact]
+    public async Task WindowsOcrSuppressesCardNumbers()
+    {
+        if (!WindowsOcr.Available) return;
+        var text = await OcrOf(new[] { "Card 4111 1111 1111 1111" }, 32, 12);
+        _out.WriteLine($"OCR text: {text}");
+        Assert.DoesNotContain("4111", text);
     }
 }
 
