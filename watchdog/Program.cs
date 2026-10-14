@@ -1,16 +1,16 @@
-// OpenDLP Watchdog - GPL-3.0-only
+// Leakwarden Watchdog - GPL-3.0-only
 using System.Diagnostics;
 using System.ServiceProcess;
 
-namespace OpenDLP.Watchdog;
+namespace Leakwarden.Watchdog;
 
 internal static class Program
 {
     // Usage:
     //   Service deployment (recommended, what install-service.ps1 registers):
-    //     OpenDLP.Watchdog.exe --service OpenDLPAgent [--heartbeat "%ProgramData%\OpenDLP\logs\agent.heartbeat"]
+    //     Leakwarden.Watchdog.exe --service LeakwardenAgent [--heartbeat "%ProgramData%\Leakwarden\logs\agent.heartbeat"]
     //   Stand-alone process (development):
-    //     OpenDLP.Watchdog.exe --agent "C:\path\OpenDLP.Agent.exe" [--heartbeat ...]
+    //     Leakwarden.Watchdog.exe --agent "C:\path\Leakwarden.Agent.exe" [--heartbeat ...]
     //   Optional: --stale-seconds 15 --interval-seconds 5 --once
     static async Task<int> Main(string[] args)
     {
@@ -23,13 +23,13 @@ internal static class Program
         }
 
         var heartbeat = Environment.ExpandEnvironmentVariables(
-            GetArg(args, "--heartbeat") ?? "%ProgramData%\\OpenDLP\\logs\\agent.heartbeat");
+            GetArg(args, "--heartbeat") ?? "%ProgramData%\\Leakwarden\\logs\\agent.heartbeat");
         var staleSeconds = int.TryParse(GetArg(args, "--stale-seconds"), out var s) ? s : 15;
         var intervalSeconds = int.TryParse(GetArg(args, "--interval-seconds"), out var iv) ? iv : 5;
         var once = args.Contains("--once", StringComparer.OrdinalIgnoreCase);
         const int graceSeconds = 15; // after a restart, give the agent time to write its first heartbeat
 
-        Console.WriteLine($"OpenDLP Watchdog started ({(serviceName != null ? $"service {serviceName}" : agentPath)})");
+        Console.WriteLine($"Leakwarden Watchdog started ({(serviceName != null ? $"service {serviceName}" : agentPath)})");
         Console.WriteLine($"Heartbeat: {heartbeat} (stale after {staleSeconds}s)");
 
         while (true)
@@ -84,7 +84,7 @@ internal static class Program
             }
             catch
             {
-                foreach (var p in Process.GetProcessesByName("OpenDLP.Agent"))
+                foreach (var p in Process.GetProcessesByName("Leakwarden.Agent"))
                 {
                     try { p.Kill(true); } catch { }
                 }

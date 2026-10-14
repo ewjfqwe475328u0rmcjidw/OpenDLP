@@ -1,17 +1,17 @@
-// OpenDLP Agent (macOS / Linux) - GPL-3.0-only
+// Leakwarden Agent (macOS / Linux) - GPL-3.0-only
 //
 // Usage:
-//   opendlp-agent [--config /path/agent.config.json]     run (launchd / systemd start it as root)
-//   opendlp-agent --decrypt <logfile> [--config ...]      print a local encrypted log
+//   leakwarden-agent [--config /path/agent.config.json]     run (launchd / systemd start it as root)
+//   leakwarden-agent --decrypt <logfile> [--config ...]      print a local encrypted log
 //
 // Config lookup: --config, then agent.config.json next to the binary, then the data folder
-// (/Library/Application Support/OpenDLP on macOS, /var/lib/opendlp on Linux).
+// (/Library/Application Support/Leakwarden on macOS, /var/lib/leakwarden on Linux).
 
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 internal static class UnixProgram
 {
@@ -46,7 +46,7 @@ internal static class UnixProgram
             return 0;
         }
 
-        Console.WriteLine($"OpenDLP Endpoint Agent v{AgentVersion.Value} ({(OperatingSystem.IsMacOS() ? "macOS" : "Linux")}) | GPLv3");
+        Console.WriteLine($"Leakwarden Endpoint Agent v{AgentVersion.Value} ({(OperatingSystem.IsMacOS() ? "macOS" : "Linux")}) | GPLv3");
         Console.WriteLine($"Config: {configPath}");
 
         var builder = Host.CreateApplicationBuilder(Array.Empty<string>());

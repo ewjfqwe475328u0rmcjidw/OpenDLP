@@ -11,7 +11,7 @@ to=friend@gmail.com subject="Payment" attachments="customers.xlsx" sent=2026-10-
 ```
 
 **Report-only by design.** It never blocks, deletes, moves or modifies mail, and only reads messages that already
-left. Matched values are masked; message bodies and attachments are never stored on the OpenDLP server.
+left. Matched values are masked; message bodies and attachments are never stored on the Leakwarden server.
 
 ## Before you enable it
 
@@ -30,17 +30,17 @@ permission:
 | Google Workspace | Add the scope `https://www.googleapis.com/auth/gmail.readonly` to the service account's domain-wide delegation (Admin console → Security → API controls). |
 
 ```env
-OPENDLP_EMAIL_SCAN=1
-# Domains that count as "inside" (default: the user's own domain / OPENDLP_GOOGLE_DOMAIN).
+LEAKWARDEN_EMAIL_SCAN=1
+# Domains that count as "inside" (default: the user's own domain / LEAKWARDEN_GOOGLE_DOMAIN).
 # Add subsidiaries and trusted partners to avoid alerts on mail to them.
-OPENDLP_EMAIL_INTERNAL_DOMAINS=acme.com,acme.co.uk,payroll-partner.com
+LEAKWARDEN_EMAIL_INTERNAL_DOMAINS=acme.com,acme.co.uk,payroll-partner.com
 ```
 
 Restart the server. Check or run it now:
 
 ```bash
-curl -H "Authorization: Bearer $OPENDLP_VIEWER_TOKEN" https://dlp.example.com/api/v1/admin/emailscan
-curl -X POST -H "Authorization: Bearer $OPENDLP_ADMIN_TOKEN" https://dlp.example.com/api/v1/admin/emailscan/run
+curl -H "Authorization: Bearer $LEAKWARDEN_VIEWER_TOKEN" https://dlp.example.com/api/v1/admin/emailscan
+curl -X POST -H "Authorization: Bearer $LEAKWARDEN_ADMIN_TOKEN" https://dlp.example.com/api/v1/admin/emailscan/run
 ```
 
 ## What is inspected

@@ -1,11 +1,11 @@
-// OpenDLP browser extension - content script - GPL-3.0-only
+// Leakwarden browser extension - content script - GPL-3.0-only
 // Watches paste, drag-and-drop and file uploads on monitored sites. Text is checked synchronously; files are
 // checked asynchronously (in block mode the original event is held and replayed only if the files are clean).
 (() => {
   "use strict";
-  const D = globalThis.OpenDLPDetectors;
-  if (!D || window.__opendlpLoaded) return;
-  window.__opendlpLoaded = true;
+  const D = globalThis.LeakwardenDetectors;
+  if (!D || window.__leakwardenLoaded) return;
+  window.__leakwardenLoaded = true;
 
   const host = location.hostname;
   let cfg = null;
@@ -26,12 +26,12 @@
   function toast(text, kind) {
     try {
       const hostEl = document.createElement("div");
-      hostEl.setAttribute("data-opendlp-toast", kind);
+      hostEl.setAttribute("data-leakwarden-toast", kind);
       const root = hostEl.attachShadow({ mode: "closed" });
       const bg = kind === "blocked" ? "#7f1d1d" : "#78350f";
       root.innerHTML = `<div style="position:fixed;top:16px;right:16px;z-index:2147483647;max-width:380px;background:${bg};
         color:#fff;font:14px/1.4 system-ui,sans-serif;padding:12px 14px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35)">
-        <b>OpenDLP</b><br></div>`;
+        <b>Leakwarden</b><br></div>`;
       root.querySelector("div").append(document.createTextNode(text));
       (document.body || document.documentElement).appendChild(hostEl);
       setTimeout(() => hostEl.remove(), 7000);

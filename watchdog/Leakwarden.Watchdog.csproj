@@ -5,11 +5,11 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>OpenDLP.Watchdog</AssemblyName>
-    <RootNamespace>OpenDLP.Watchdog</RootNamespace>
+    <AssemblyName>Leakwarden.Watchdog</AssemblyName>
+    <RootNamespace>Leakwarden.Watchdog</RootNamespace>
     <Version>0.13.0</Version>
-    <Authors>OpenDLP Contributors</Authors>
-    <Description>OpenDLP watchdog process for agent keep-alive</Description>
+    <Authors>Leakwarden Contributors</Authors>
+    <Description>Leakwarden watchdog process for agent keep-alive</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
 

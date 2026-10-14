@@ -1,4 +1,4 @@
-# OpenDLP Central Server - outbound e-mail scanning (report-only) - GPL-3.0-only
+# Leakwarden Central Server - outbound e-mail scanning (report-only) - GPL-3.0-only
 """Finds e-mails sent to people *outside* the organisation whose body or attachments contain sensitive data
 (same rules as the agents) or an exact copy of a fingerprinted file.
 

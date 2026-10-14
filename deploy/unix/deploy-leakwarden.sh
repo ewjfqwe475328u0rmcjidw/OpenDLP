@@ -1,7 +1,7 @@
 #!/bin/bash
-# Silent OpenDLP agent deployment for many Macs / Linux machines (Jamf, Kandji, Intune for Mac, Mosyle, SSH, Ansible).
+# Silent Leakwarden agent deployment for many Macs / Linux machines (Jamf, Kandji, Intune for Mac, Mosyle, SSH, Ansible).
 #
-#   curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.13.0/deploy-opendlp.sh \
+#   curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.13.0/deploy-leakwarden.sh \
 #     | sudo bash -s -- --server-url https://dlp.example.com --enrollment-code "CODE"
 #
 # Picks the right package for the CPU/OS, verifies its SHA-256 and runs install.sh. Re-running on a machine that
@@ -9,7 +9,7 @@
 #   --package FILE --sha256 HASH   use a local / file-share copy instead of downloading
 set -euo pipefail
 
-VERSION="v0.13.0"; REPO="ewjfqwe475328u0rmcjidw/OpenDLP"; PACKAGE=""; SHA=""; FORCE=0
+VERSION="v0.13.0"; REPO="leakwarden/leakwarden"; PACKAGE=""; SHA=""; FORCE=0
 INSTALL_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -24,14 +24,14 @@ done
 [ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
 
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) NAME="OpenDLP-macos-arm64-$VERSION.tar.gz"; MARK="/Library/Application Support/OpenDLP/bin/installed-version.txt" ;;
-  Darwin-x86_64) NAME="OpenDLP-macos-x64-$VERSION.tar.gz"; MARK="/Library/Application Support/OpenDLP/bin/installed-version.txt" ;;
-  Linux-x86_64) NAME="OpenDLP-linux-x64-$VERSION.tar.gz"; MARK="/opt/opendlp/installed-version.txt" ;;
+  Darwin-arm64) NAME="Leakwarden-macos-arm64-$VERSION.tar.gz"; MARK="/Library/Application Support/Leakwarden/bin/installed-version.txt" ;;
+  Darwin-x86_64) NAME="Leakwarden-macos-x64-$VERSION.tar.gz"; MARK="/Library/Application Support/Leakwarden/bin/installed-version.txt" ;;
+  Linux-x86_64) NAME="Leakwarden-linux-x64-$VERSION.tar.gz"; MARK="/opt/leakwarden/installed-version.txt" ;;
   *) echo "Unsupported platform: $(uname -s) $(uname -m)" >&2; exit 1 ;;
 esac
 
-if [ "$FORCE" -eq 0 ] && [ -f "$MARK" ] && [ "$(cat "$MARK")" = "$VERSION" ] && pgrep -f "opendlp-agent --config" >/dev/null; then
-  echo "OpenDLP $VERSION already installed - nothing to do"; exit 0
+if [ "$FORCE" -eq 0 ] && [ -f "$MARK" ] && [ "$(cat "$MARK")" = "$VERSION" ] && pgrep -f "leakwarden-agent --config" >/dev/null; then
+  echo "Leakwarden $VERSION already installed - nothing to do"; exit 0
 fi
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -61,4 +61,4 @@ INSTALLER="$(find "$TMP" -name install.sh -type f | head -1)"
 [ -n "$INSTALLER" ] || { echo "install.sh not found in package" >&2; exit 1; }
 bash "$INSTALLER" ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}   # bash 3.2 (macOS) safe with an empty array
 echo "$VERSION" > "$MARK"
-echo "OpenDLP $VERSION installed"
+echo "Leakwarden $VERSION installed"

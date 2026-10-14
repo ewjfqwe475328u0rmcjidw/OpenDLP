@@ -1,8 +1,8 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 /// <summary>Text recognition for images (screenshots, photos of ID cards, scanned documents), on the device only.</summary>
 public sealed class OcrPolicy

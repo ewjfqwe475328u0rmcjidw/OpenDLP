@@ -9,8 +9,8 @@
     "{AllUsers}\\Documents",
     "{AllUsers}\\Downloads"
   ],
-  "LogDirectory": "%ProgramData%\\OpenDLP\\logs",
-  "PolicyCachePath": "%ProgramData%\\OpenDLP\\policy\\policy.json",
+  "LogDirectory": "%ProgramData%\\Leakwarden\\logs",
+  "PolicyCachePath": "%ProgramData%\\Leakwarden\\policy\\policy.json",
   "TelemetryEnabled": true,
   "PolicyPollSeconds": 60,
   "LogRetentionDays": 30,

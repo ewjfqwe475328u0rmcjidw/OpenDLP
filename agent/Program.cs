@@ -1,20 +1,20 @@
-// OpenDLP Agent - GPL-3.0-only
-// Copyright (C) OpenDLP Contributors
+// Leakwarden Agent - GPL-3.0-only
+// Copyright (C) Leakwarden Contributors
 // This program is free software: you can redistribute it and/or modify it under the terms of the
 // GNU General Public License v3. It is distributed WITHOUT ANY WARRANTY.
 //
 // Usage:
-//   OpenDLP.Agent.exe --mode service            (started by the Windows Service Control Manager)
-//   OpenDLP.Agent.exe --mode helper             (per-user, hidden; clipboard monitor)
-//   OpenDLP.Agent.exe --mode console            (all-in-one foreground, for development)
-//   OpenDLP.Agent.exe --decrypt <logfile>       (print a local encrypted log)
+//   Leakwarden.Agent.exe --mode service            (started by the Windows Service Control Manager)
+//   Leakwarden.Agent.exe --mode helper             (per-user, hidden; clipboard monitor)
+//   Leakwarden.Agent.exe --mode console            (all-in-one foreground, for development)
+//   Leakwarden.Agent.exe --decrypt <logfile>       (print a local encrypted log)
 
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 internal static class Program
 {
@@ -43,7 +43,7 @@ internal static class Program
         if (di >= 0 && di + 1 < args.Length)
             return DecryptFile(args[di + 1], config);
 
-        Console.WriteLine($"OpenDLP Endpoint Agent v{AgentVersion.Value} | GPLv3");
+        Console.WriteLine($"Leakwarden Endpoint Agent v{AgentVersion.Value} | GPLv3");
         Console.WriteLine("WARNING: Experimental MVP. Windows/.NET build and endpoint behavior have NOT yet been validated by the maintainers.");
         Console.WriteLine("Use only on an authorized test device. Do not rely on this agent as your only data-loss-prevention control.");
         Console.WriteLine($"Mode: {mode}\n");
@@ -55,7 +55,7 @@ internal static class Program
         builder.Services.AddSingleton(config);
         builder.Services.AddSingleton(new RunContext(mode));
         if (mode == RunMode.Service)
-            builder.Services.AddWindowsService(o => o.ServiceName = "OpenDLPAgent");
+            builder.Services.AddWindowsService(o => o.ServiceName = "LeakwardenAgent");
         builder.Services.AddHostedService<AgentWorker>();
 
         builder.Build().Run();

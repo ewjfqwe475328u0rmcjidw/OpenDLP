@@ -1,4 +1,4 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Security.AccessControl;
@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 /// <summary>
 /// The user-session helper has no secrets: it forwards events to the SYSTEM service over a named pipe,
@@ -15,7 +15,7 @@ namespace OpenDLP.Agent;
 /// </summary>
 public sealed class PipeAlertLogger : IAlertLogger, IDisposable
 {
-    public const string PipeName = "OpenDLP.Helper";
+    public const string PipeName = "Leakwarden.Helper";
 
     private readonly BlockingCollection<string> _queue = new(1000);
     private readonly Thread _thread;
@@ -23,7 +23,7 @@ public sealed class PipeAlertLogger : IAlertLogger, IDisposable
 
     public PipeAlertLogger()
     {
-        _thread = new Thread(Pump) { IsBackground = true, Name = "OpenDLP.HelperPipe" };
+        _thread = new Thread(Pump) { IsBackground = true, Name = "Leakwarden.HelperPipe" };
         _thread.Start();
     }
 

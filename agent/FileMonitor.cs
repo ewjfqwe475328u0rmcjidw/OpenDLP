@@ -1,7 +1,7 @@
-// OpenDLP Agent - GPL-3.0-only (shared by the Windows and macOS agents)
+// Leakwarden Agent - GPL-3.0-only (shared by the Windows and macOS agents)
 using System.Collections.Concurrent;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 public sealed class FileMonitor : IDisposable
 {

@@ -1,9 +1,9 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 public interface IAlertLogger
 {

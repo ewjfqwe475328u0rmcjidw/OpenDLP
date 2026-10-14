@@ -1,4 +1,4 @@
-// OpenDLP browser extension - content detectors - GPL-3.0-only
+// Leakwarden browser extension - content detectors - GPL-3.0-only
 // JavaScript port of agent/Scanner.cs. Tested against tests/vectors/detectors.json like the C# and Python ports.
 (function () {
   "use strict";
@@ -247,5 +247,5 @@
   const api = { scan, summarize, worstSeverity, mask, hasContext, isValidCard, isValidTwId, isValidIban,
     textOfBytes, hashesOfBytes, sha256Hex, zipEntries, DEFAULT_CONTEXT };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
-  else globalThis.OpenDLPDetectors = api;
+  else globalThis.LeakwardenDetectors = api;
 })();

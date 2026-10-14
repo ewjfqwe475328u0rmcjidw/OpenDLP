@@ -1,10 +1,10 @@
 using System.Drawing;
 using System.Drawing.Imaging;
-using OpenDLP.Agent;
+using Leakwarden.Agent;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace OpenDLP.Agent.Tests;
+namespace Leakwarden.Agent.Tests;
 
 public class OcrTests
 {

@@ -1,10 +1,10 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 /// <summary>
 /// Self-enrollment: exchange a one-time enrollment code for a per-machine token and keep it out of agent.config.json.
@@ -15,7 +15,7 @@ public static class Enrollment
 {
     public static string DefaultCredentialPath => Path.Combine(AgentConfig.DataRoot, "credentials.bin");
 
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("OpenDLP-credentials-v1");
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("Leakwarden-credentials-v1");
 
     public static string? LoadToken(string path)
     {

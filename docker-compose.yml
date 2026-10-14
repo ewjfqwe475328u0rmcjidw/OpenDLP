@@ -1,12 +1,12 @@
-# OpenDLP server — one-command deployment.
+# Leakwarden server — one-command deployment.
 #
 #   cp server/env.example .env     # fill in the secrets
 #   docker compose up -d            # API + dashboard on 127.0.0.1:8000
 #
 # Public HTTPS with automatic Let's Encrypt certificates (needs a DNS name pointing at this host, ports 80/443 open):
-#   OPENDLP_DOMAIN=dlp.example.com docker compose --profile https up -d
+#   LEAKWARDEN_DOMAIN=dlp.example.com docker compose --profile https up -d
 services:
-  opendlp-server:
+  leakwarden-server:
     build:
       context: .
       dockerfile: server/Dockerfile
@@ -14,7 +14,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - opendlp-data:/data
+      - leakwarden-data:/data
       - ./policies:/app/policies
     restart: unless-stopped
 
@@ -25,15 +25,15 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      OPENDLP_DOMAIN: ${OPENDLP_DOMAIN:?set OPENDLP_DOMAIN=your.dns.name}
+      LEAKWARDEN_DOMAIN: ${LEAKWARDEN_DOMAIN:?set LEAKWARDEN_DOMAIN=your.dns.name}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on: [opendlp-server]
+    depends_on: [leakwarden-server]
     restart: unless-stopped
 
 volumes:
-  opendlp-data:
+  leakwarden-data:
   caddy-data:
   caddy-config:

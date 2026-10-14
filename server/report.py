@@ -1,4 +1,4 @@
-# OpenDLP Central Server - monthly PDF report - GPL-3.0-only
+# Leakwarden Central Server - monthly PDF report - GPL-3.0-only
 """Monthly audit report: what was detected, where, and how healthy the agent fleet is.
 
 Only facts recorded by the server go into the report. It deliberately contains no invented
@@ -230,12 +230,12 @@ def render_pdf(d: dict[str, Any], org_name: str, generated_at: datetime | None =
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
-        title=f"OpenDLP monthly report {d['month']}", author="OpenDLP", subject=org_name,
+        title=f"Leakwarden monthly report {d['month']}", author="Leakwarden", subject=org_name,
     )
     period = f"{d['start']:%Y-%m-%d} to {(d['end'] - timedelta(days=1)):%Y-%m-%d} (UTC)"
     story: list[Any] = [
         Paragraph(f"Data protection report &mdash; {d['start']:%B %Y}", st["title"]),
-        Paragraph(f"{_esc(org_name)} &middot; {period} &middot; generated {generated_at:%Y-%m-%d %H:%M} UTC by OpenDLP", st["sub"]),
+        Paragraph(f"{_esc(org_name)} &middot; {period} &middot; generated {generated_at:%Y-%m-%d %H:%M} UTC by Leakwarden", st["sub"]),
         Spacer(1, 10),
         _kpis(d),
     ]
@@ -277,7 +277,7 @@ def render_pdf(d: dict[str, Any], org_name: str, generated_at: datetime | None =
         a = d["audit"]
         story.append(Paragraph("Audit log integrity", st["h2"]))
         if a.get("ok"):
-            how = "keyed HMAC-SHA256 chain" if a.get("keyed") else "SHA-256 chain (no OPENDLP_AUDIT_KEY set)"
+            how = "keyed HMAC-SHA256 chain" if a.get("keyed") else "SHA-256 chain (no LEAKWARDEN_AUDIT_KEY set)"
             story.append(Paragraph(
                 f'<font color="#1f9d55"><b>Verified.</b></font> All {a.get("checked", 0)} stored events and administrator '
                 f"actions form an unbroken {how}; no record has been edited or deleted outside the retention policy. "
@@ -291,8 +291,8 @@ def render_pdf(d: dict[str, Any], org_name: str, generated_at: datetime | None =
     story += [
         Spacer(1, 14),
         Paragraph(
-            "About this report: figures come from events received by the OpenDLP server in the period. "
-            "OpenDLP is an open-source audit and detection tool; detections are alerts, not proof of a data breach, "
+            "About this report: figures come from events received by the Leakwarden server in the period. "
+            "Leakwarden is an open-source audit and detection tool; detections are alerts, not proof of a data breach, "
             "and this report is not a certification of compliance with any law or standard. Matched values are masked "
             "on the endpoint and never stored on the server.", st["small"]),
     ]
@@ -301,7 +301,7 @@ def render_pdf(d: dict[str, Any], org_name: str, generated_at: datetime | None =
         canvas.saveState()
         canvas.setFont("Helvetica", 7.5)
         canvas.setFillColor(MUTED)
-        canvas.drawString(18 * mm, 10 * mm, f"OpenDLP data protection report {d['month']} - {org_name}")
+        canvas.drawString(18 * mm, 10 * mm, f"Leakwarden data protection report {d['month']} - {org_name}")
         canvas.drawRightString(A4[0] - 18 * mm, 10 * mm, f"page {doc_.page}")
         canvas.restoreState()
 
@@ -333,9 +333,9 @@ def maybe_send_monthly(
     if row is not None and row[0] >= target:
         return None
     month, pdf = build_monthly_report(conn, target, org_name, audit_key)
-    send(f"OpenDLP data protection report {month}",
-         f"Attached: the OpenDLP data protection report for {month} ({org_name}).",
-         pdf, f"opendlp-report-{month}.pdf")
+    send(f"Leakwarden data protection report {month}",
+         f"Attached: the Leakwarden data protection report for {month} ({org_name}).",
+         pdf, f"leakwarden-report-{month}.pdf")
     conn.execute("INSERT INTO meta(key, value) VALUES ('last_report_month', ?) "
                  "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (target,))
     conn.commit()

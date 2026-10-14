@@ -18,18 +18,18 @@ trap {
     break
 }
 $root = (Resolve-Path ".").Path
-$work = Join-Path $env:RUNNER_TEMP "opendlp-svc-e2e"
-$installDir = "C:\OpenDLP-e2e"
-$watch = "C:\OpenDLP-e2e-watch"
-$svc = "OpenDLPAgent"
+$work = Join-Path $env:RUNNER_TEMP "leakwarden-svc-e2e"
+$installDir = "C:\Leakwarden-e2e"
+$watch = "C:\Leakwarden-e2e-watch"
+$svc = "LeakwardenAgent"
 Remove-Item -Recurse -Force $work, $watch -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $work, $watch | Out-Null
 
 function New-Secret { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ }) }
 $admin = New-Secret; $enroll = New-Secret
-$port = 8766; $base = "http://127.0.0.1:$port"; $agentId = $env:COMPUTERNAME   # Deploy-OpenDLP.ps1 enrolls with the computer name
+$port = 8766; $base = "http://127.0.0.1:$port"; $agentId = $env:COMPUTERNAME   # Deploy-Leakwarden.ps1 enrolls with the computer name
 $serverLog = "$work\server.log"
-$agentLogDir = "$env:ProgramData\OpenDLP\logs"
+$agentLogDir = "$env:ProgramData\Leakwarden\logs"
 
 function Fail([string]$msg) {
     Write-Host "::error::SERVICE-E2E: $msg"
@@ -37,26 +37,26 @@ function Fail([string]$msg) {
     foreach ($f in @($serverLog, "$serverLog.err")) {
         if (Test-Path $f) { Write-Host "----- $f -----"; Get-Content $f -Tail 30 }
     }
-    Write-Host "----- Application event log (OpenDLP / .NET) -----"
+    Write-Host "----- Application event log (Leakwarden / .NET) -----"
     Get-WinEvent -LogName Application -MaxEvents 30 -ErrorAction SilentlyContinue |
-        Where-Object { $_.ProviderName -match 'OpenDLP|\.NET Runtime|Application Error' } |
+        Where-Object { $_.ProviderName -match 'Leakwarden|\.NET Runtime|Application Error' } |
         ForEach-Object { $m = ($_.Message -split "`n")[0..6] -join ' '; Write-Host "::error::eventlog: $m" }
     & "$installDir\uninstall-service.ps1" -InstallDir $installDir -RemoveLogs 2>$null
     exit 1
 }
 
 # ---------- server ----------
-$env:OPENDLP_TOKEN = New-Secret
-$env:OPENDLP_ADMIN_TOKEN = $admin
-$env:OPENDLP_ENROLL_CODE = $enroll
-$env:OPENDLP_DB = "$work\opendlp.db"
+$env:LEAKWARDEN_TOKEN = New-Secret
+$env:LEAKWARDEN_ADMIN_TOKEN = $admin
+$env:LEAKWARDEN_ENROLL_CODE = $enroll
+$env:LEAKWARDEN_DB = "$work\leakwarden.db"
 $server = Start-Process python -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port $port" -WorkingDirectory "$root\server" `
     -RedirectStandardOutput $serverLog -RedirectStandardError "$serverLog.err" -PassThru -NoNewWindow
 $up = $false
 for ($i = 0; $i -lt 30; $i++) { try { if ((Invoke-RestMethod "$base/health").status -eq "ok") { $up = $true; break } } catch { }; Start-Sleep 1 }
 if (-not $up) { Fail "server did not start" }
 $H = @{ Authorization = "Bearer $admin" }
-Remove-Item Env:OPENDLP_TOKEN, Env:OPENDLP_ENROLL_CODE
+Remove-Item Env:LEAKWARDEN_TOKEN, Env:LEAKWARDEN_ENROLL_CODE
 
 # Invoke-RestMethod emits a JSON array as ONE pipeline object; unroll it so callers see individual events.
 function Events([string]$type) {
@@ -72,12 +72,12 @@ function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
 }
 
 # ---------- install exactly like an administrator rolling out many PCs ----------
-if (-not (Test-Path "$Publish\OpenDLP.Agent.exe")) { Fail "published agent not found in $Publish" }
-if (-not (Test-Path "$Publish\OpenDLP.Watchdog.exe")) { Fail "published watchdog not found in $Publish" }
-$zip = Join-Path $work "OpenDLP-windows-x64-e2e.zip"
+if (-not (Test-Path "$Publish\Leakwarden.Agent.exe")) { Fail "published agent not found in $Publish" }
+if (-not (Test-Path "$Publish\Leakwarden.Watchdog.exe")) { Fail "published watchdog not found in $Publish" }
+$zip = Join-Path $work "Leakwarden-windows-x64-e2e.zip"
 Compress-Archive -Path $Publish -DestinationPath $zip -Force
 $sha = (Get-FileHash $zip -Algorithm SHA256).Hash
-$deploy = Join-Path $root "deploy\windows\Deploy-OpenDLP.ps1"
+$deploy = Join-Path $root "deploy\windows\Deploy-Leakwarden.ps1"
 # a wrong checksum must be refused
 & pwsh -NoProfile -File $deploy -ServerUrl $base -EnrollmentCode $enroll -PackagePath $zip -ExpectedSha256 ("0" * 64) -InstallDir $installDir -Version "e2e"
 if ($LASTEXITCODE -eq 0) { Fail "deploy script accepted a package with a wrong checksum" }
@@ -85,14 +85,14 @@ if (Get-Service $svc -ErrorAction SilentlyContinue) { Fail "service was installe
 Write-Host "ok: tampered package refused"
 & pwsh -NoProfile -File $deploy -ServerUrl $base -EnrollmentCode $enroll -PackagePath $zip -ExpectedSha256 $sha `
     -InstallDir $installDir -Version "e2e" -SensitivePaths $watch
-if ($LASTEXITCODE -ne 0) { Fail "Deploy-OpenDLP.ps1 failed with exit code $LASTEXITCODE (see $env:ProgramData\OpenDLP\deploy.log)" }
+if ($LASTEXITCODE -ne 0) { Fail "Deploy-Leakwarden.ps1 failed with exit code $LASTEXITCODE (see $env:ProgramData\Leakwarden\deploy.log)" }
 # re-running on an up-to-date machine must be a no-op
 $out = & pwsh -NoProfile -File $deploy -ServerUrl $base -EnrollmentCode $enroll -PackagePath $zip -ExpectedSha256 $sha -InstallDir $installDir -Version "e2e"
 if ($LASTEXITCODE -ne 0 -or -not ($out -match "already installed")) { Fail "second deploy run was not idempotent: $out" }
 Write-Host "ok: second deploy run skipped"
 if ((Get-Service $svc).Status -ne "Running") { Fail "service is not running after install" }
 Write-Output "ok: service installed and running"
-if (-not (Get-ScheduledTask -TaskName "OpenDLP Watchdog" -ErrorAction SilentlyContinue)) { Fail "watchdog task missing" }
+if (-not (Get-ScheduledTask -TaskName "Leakwarden Watchdog" -ErrorAction SilentlyContinue)) { Fail "watchdog task missing" }
 
 Wait-Until { Invoke-RestMethod "$base/api/v1/agents" -Headers $H | ForEach-Object { $_ } | Where-Object { $_.agent_id -eq $agentId -and $_.enrolled } } 60 "service enrolled" | Out-Null
 Wait-Until { (Events "POLICY_UPDATED").Count -ge 1 } 90 "service applied signed policy" | Out-Null
@@ -132,23 +132,23 @@ $printerReady = $false
 try {
     $pdf = "$work\print-test.pdf"
     Add-PrinterPort -Name $pdf -ErrorAction Stop
-    Add-Printer -Name "OpenDLP E2E PDF" -DriverName "Microsoft Print To PDF" -PortName $pdf -ErrorAction Stop
+    Add-Printer -Name "Leakwarden E2E PDF" -DriverName "Microsoft Print To PDF" -PortName $pdf -ErrorAction Stop
     $printerReady = $true
 } catch {
     Write-Output "::warning::SERVICE-E2E: could not create a test printer on this runner, print check skipped: $($_.Exception.Message)"
 }
 if ($printerReady) {
     Start-Sleep 3
-    1..40 | ForEach-Object { "OpenDLP print monitor test line $_" } | Out-Printer -Name "OpenDLP E2E PDF"
-    $job = Wait-Until { Events "PRINT_JOB" | Where-Object { $_.message -match 'OpenDLP E2E PDF' } | Select-Object -First 1 } 60 "PRINT_JOB event received"
+    1..40 | ForEach-Object { "Leakwarden print monitor test line $_" } | Out-Printer -Name "Leakwarden E2E PDF"
+    $job = Wait-Until { Events "PRINT_JOB" | Where-Object { $_.message -match 'Leakwarden E2E PDF' } | Select-Object -First 1 } 60 "PRINT_JOB event received"
     Write-Host "print event: $($job.message)"
 }
 
 # ---------- self-healing ----------
-$oldPid = (Get-Process OpenDLP.Agent).Id
+$oldPid = (Get-Process Leakwarden.Agent).Id
 Stop-Process -Id $oldPid -Force
 Write-Output "killed agent pid $oldPid"
-Wait-Until { $p = Get-Process OpenDLP.Agent -ErrorAction SilentlyContinue; $p -and ($p.Id -ne $oldPid) -and ((Get-Service $svc).Status -eq "Running") } 90 "agent restarted after being killed" | Out-Null
+Wait-Until { $p = Get-Process Leakwarden.Agent -ErrorAction SilentlyContinue; $p -and ($p.Id -ne $oldPid) -and ((Get-Service $svc).Status -eq "Running") } 90 "agent restarted after being killed" | Out-Null
 $heartbeat = "$agentLogDir\agent.heartbeat"
 Wait-Until { (Test-Path $heartbeat) -and ((Get-Date).ToUniversalTime() - (Get-Item $heartbeat).LastWriteTimeUtc).TotalSeconds -lt 15 } 60 "heartbeat fresh after restart" | Out-Null
 $before = (Events "CONTENT_MATCH").Count
@@ -159,12 +159,12 @@ Wait-Until { (Events "CONTENT_MATCH").Count -gt $before } 90 "detection works af
 & "$installDir\uninstall-service.ps1" -InstallDir $installDir -RemoveLogs
 if (Get-Service $svc -ErrorAction SilentlyContinue) { Fail "service still installed after uninstall" }
 if (Test-Path $installDir) { Fail "install directory still present after uninstall" }
-if (Get-ScheduledTask -TaskName "OpenDLP Watchdog" -ErrorAction SilentlyContinue) { Fail "watchdog task still present after uninstall" }
-if (Get-Process OpenDLP.Agent, OpenDLP.Watchdog -ErrorAction SilentlyContinue) { Fail "OpenDLP processes still running after uninstall" }
+if (Get-ScheduledTask -TaskName "Leakwarden Watchdog" -ErrorAction SilentlyContinue) { Fail "watchdog task still present after uninstall" }
+if (Get-Process Leakwarden.Agent, Leakwarden.Watchdog -ErrorAction SilentlyContinue) { Fail "Leakwarden processes still running after uninstall" }
 Write-Output "ok: clean uninstall"
 
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "SERVICE E2E PASSED"
-"## OpenDLP service-mode test passed`n`n- Deploy-OpenDLP.ps1: checksum enforced, idempotent re-run`n- install-service.ps1 with self-enrollment and watchdog`n- Windows service runs as SYSTEM and applies signed policy`n- detection inside .docx and .xlsx`n- recovery after the agent process is killed`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## Leakwarden service-mode test passed`n`n- Deploy-Leakwarden.ps1: checksum enforced, idempotent re-run`n- install-service.ps1 with self-enrollment and watchdog`n- Windows service runs as SYSTEM and applies signed policy`n- detection inside .docx and .xlsx`n- recovery after the agent process is killed`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 # The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
 exit 0

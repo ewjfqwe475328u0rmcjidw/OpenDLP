@@ -1,10 +1,10 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Windows.Forms;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 /// <summary>
 /// Faint, click-through text tiled across every monitor ("user · host · date"). It shows up in photos of the screen,
@@ -36,7 +36,7 @@ public sealed class ScreenWatermark : IDisposable
 
     public void Start()
     {
-        _thread = new Thread(Run) { IsBackground = true, Name = "OpenDLP.Watermark" };
+        _thread = new Thread(Run) { IsBackground = true, Name = "Leakwarden.Watermark" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
     }

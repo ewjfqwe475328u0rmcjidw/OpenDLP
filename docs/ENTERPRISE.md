@@ -8,24 +8,24 @@ existing security team. All are optional and configured with environment variabl
 Every stored record — agent events, cloud-scan findings and administrator actions — is linked to the previous one:
 
 ```
-chain(n) = HMAC-SHA256(OPENDLP_AUDIT_KEY, chain(n-1) | record(n))
+chain(n) = HMAC-SHA256(LEAKWARDEN_AUDIT_KEY, chain(n-1) | record(n))
 ```
 
 Editing, deleting or re-ordering any record breaks every link after it. Check at any time:
 
 ```bash
-curl -H "Authorization: Bearer $OPENDLP_VIEWER_TOKEN" https://dlp.example.com/api/v1/admin/audit/verify
+curl -H "Authorization: Bearer $LEAKWARDEN_VIEWER_TOKEN" https://dlp.example.com/api/v1/admin/audit/verify
 # {"ok": true, "checked": 18234, "head": "9f2c…", "keyed": true}
 # {"ok": false, "firstBadId": 1042, "reason": "event modified"}
 ```
 
 The dashboard shows the result as a tile, and the monthly PDF report includes an **Audit log integrity** section.
 
-- **Set `OPENDLP_AUDIT_KEY`** (32 random bytes, hex) and keep it outside the database, e.g. in your secrets
+- **Set `LEAKWARDEN_AUDIT_KEY`** (32 random bytes, hex) and keep it outside the database, e.g. in your secrets
   manager. Without it a plain SHA-256 chain is used: accidental damage and casual edits are still detected, but
   someone with write access to the database file could rebuild the chain.
 - Do not change the key later; records written under the old key will no longer verify.
-- Retention purges (`OPENDLP_RETENTION_DAYS`) delete the oldest records and move a verified anchor forward, so the
+- Retention purges (`LEAKWARDEN_RETENTION_DAYS`) delete the oldest records and move a verified anchor forward, so the
   chain keeps verifying.
 - Records written by versions before 0.13.0 are not covered; the chain starts with the first record after upgrade.
 - For evidence that must survive a full server compromise, also forward events to a SIEM (below): the `cs3`
@@ -44,8 +44,8 @@ actor=api-admin-token action=policy_update rules=14
 ## SIEM forwarding
 
 ```env
-OPENDLP_SYSLOG=tls://siem.example.com:6514   # or udp://host:514, tcp://host:514
-OPENDLP_SYSLOG_FORMAT=cef                    # or json
+LEAKWARDEN_SYSLOG=tls://siem.example.com:6514   # or udp://host:514, tcp://host:514
+LEAKWARDEN_SYSLOG_FORMAT=cef                    # or json
 ```
 
 Every stored event is sent as an RFC 5424 syslog message (facility `authpriv`). TCP and TLS use octet-counting
@@ -58,7 +58,7 @@ CEF mapping:
 
 | CEF field | Value |
 |---|---|
-| Device Vendor / Product | `OpenDLP` / `OpenDLP` |
+| Device Vendor / Product | `Leakwarden` / `Leakwarden` |
 | Signature ID / Name | event type, e.g. `USB_BLOCK`, `FILE_SENSITIVE`, `CLOUD_PUBLIC_SHARE`, `ADMIN_ACTION` |
 | Severity | alerts: low 3, medium 5, high 8, critical 10; other events by level |
 | `rt` | event time (agent clock, UTC) |
@@ -67,14 +67,14 @@ CEF mapping:
 
 Works with Splunk (syslog input or Splunk Connect for Syslog), Microsoft Sentinel (CEF via AMA), IBM QRadar,
 Wazuh, Graylog and Elastic. Pulling instead of pushing is also possible with the read-only API
-(`GET /api/v1/events`, `/events.csv`) and `OPENDLP_VIEWER_TOKEN`.
+(`GET /api/v1/events`, `/events.csv`) and `LEAKWARDEN_VIEWER_TOKEN`.
 
 ## Department / group policies
 
 The company policy (`policies/default-policy.json`) applies to every endpoint. A group adds an **overlay**:
 
 ```bash
-curl -X PUT -H "Authorization: Bearer $OPENDLP_ADMIN_TOKEN" -H "Content-Type: application/json" \
+curl -X PUT -H "Authorization: Bearer $LEAKWARDEN_ADMIN_TOKEN" -H "Content-Type: application/json" \
   https://dlp.example.com/api/v1/admin/groups/Finance -d '{
     "usb": {"mode": "block"},
     "browser": {"mode": "block"},
@@ -93,7 +93,7 @@ Merge rules:
 The merged policy is validated before it is saved. Assign endpoints in the dashboard (**Group** column) or:
 
 ```bash
-curl -X POST -H "Authorization: Bearer $OPENDLP_ADMIN_TOKEN" -H "Content-Type: application/json" \
+curl -X POST -H "Authorization: Bearer $LEAKWARDEN_ADMIN_TOKEN" -H "Content-Type: application/json" \
   https://dlp.example.com/api/v1/admin/agents/FIN-LAPTOP-07/group -d '{"group": "Finance"}'
 ```
 
@@ -104,13 +104,13 @@ Groups are assigned by administrators only; an endpoint cannot choose its own gr
 ## Dashboard single sign-on (OpenID Connect)
 
 ```env
-OPENDLP_PUBLIC_URL=https://dlp.example.com
-OPENDLP_OIDC_ISSUER=...
-OPENDLP_OIDC_CLIENT_ID=...
-OPENDLP_OIDC_CLIENT_SECRET=...
-OPENDLP_OIDC_ADMINS=it@example.com,owner@example.com
-OPENDLP_OIDC_VIEWERS=@example.com
-OPENDLP_SESSION_SECRET=<random, keeps sign-ins across restarts>
+LEAKWARDEN_PUBLIC_URL=https://dlp.example.com
+LEAKWARDEN_OIDC_ISSUER=...
+LEAKWARDEN_OIDC_CLIENT_ID=...
+LEAKWARDEN_OIDC_CLIENT_SECRET=...
+LEAKWARDEN_OIDC_ADMINS=it@example.com,owner@example.com
+LEAKWARDEN_OIDC_VIEWERS=@example.com
+LEAKWARDEN_SESSION_SECRET=<random, keeps sign-ins across restarts>
 ```
 
 Register the redirect URI **`https://dlp.example.com/auth/callback`** with your provider.
@@ -124,12 +124,12 @@ Register the redirect URI **`https://dlp.example.com/auth/callback`** with your 
 
 How it works: authorization code flow with PKCE; the server verifies the ID token signature against the
 provider's published keys (RS256 / ES256), the issuer, audience, expiry and a one-time nonce. The e-mail address
-(or, for Entra ID, the sign-in name) decides the role: entries in `OPENDLP_OIDC_ADMINS` are administrators,
-entries in `OPENDLP_OIDC_VIEWERS` read-only; `@domain` matches a whole domain; everyone else is refused and the
+(or, for Entra ID, the sign-in name) decides the role: entries in `LEAKWARDEN_OIDC_ADMINS` are administrators,
+entries in `LEAKWARDEN_OIDC_VIEWERS` read-only; `@domain` matches a whole domain; everyone else is refused and the
 refusal is logged. Unverified e-mail addresses are ignored. Sessions are signed, HTTP-only cookies valid for
-`OPENDLP_SESSION_HOURS` (default 8).
+`LEAKWARDEN_SESSION_HOURS` (default 8).
 
-The Basic-auth login (`OPENDLP_DASHBOARD_PASSWORD`) keeps working as a break-glass account; leave it unset if you
+The Basic-auth login (`LEAKWARDEN_DASHBOARD_PASSWORD`) keeps working as a break-glass account; leave it unset if you
 want SSO only. Dashboard pages that change data only accept requests coming from the dashboard itself (Origin
 check); automation should use the bearer-token API.
 

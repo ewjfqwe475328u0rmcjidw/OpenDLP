@@ -18,6 +18,6 @@
     <None Include="..\policies\default-policy.json" Link="policy.default.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\agent\OpenDLP.Agent.csproj" />
+    <ProjectReference Include="..\agent\Leakwarden.Agent.csproj" />
   </ItemGroup>
 </Project>

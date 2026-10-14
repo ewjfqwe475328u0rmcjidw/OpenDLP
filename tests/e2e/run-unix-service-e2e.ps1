@@ -14,12 +14,12 @@ trap {
     break
 }
 $root = (Resolve-Path ".").Path
-$work = Join-Path $env:RUNNER_TEMP "opendlp-unix-e2e"
+$work = Join-Path $env:RUNNER_TEMP "leakwarden-unix-e2e"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 $watch = Join-Path $work "watch"
 New-Item -ItemType Directory -Force -Path $watch | Out-Null
 $isMac = $IsMacOS
-$dataDir = if ($isMac) { "/Library/Application Support/OpenDLP" } else { "/var/lib/opendlp" }
+$dataDir = if ($isMac) { "/Library/Application Support/Leakwarden" } else { "/var/lib/leakwarden" }
 
 function New-Secret { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ }) }
 $admin = New-Secret; $enroll = New-Secret
@@ -32,16 +32,16 @@ function Fail([string]$msg) {
         Write-Host "----- $f -----"
         sudo tail -n 30 $f 2>$null | ForEach-Object { Write-Host $_; if ($_ -match 'error|exception|fail') { Write-Host "::error::$(Split-Path $f -Leaf): $($_.Trim())" } }
     }
-    if (-not $isMac) { sudo journalctl -u opendlp-agent --no-pager -n 30 2>$null | ForEach-Object { Write-Host $_ } }
+    if (-not $isMac) { sudo journalctl -u leakwarden-agent --no-pager -n 30 2>$null | ForEach-Object { Write-Host $_ } }
     sudo bash (Join-Path $Publish "uninstall.sh") --remove-data 2>$null | Out-Null
     exit 1
 }
 
 # ---------- server ----------
-$env:OPENDLP_TOKEN = New-Secret
-$env:OPENDLP_ADMIN_TOKEN = $admin
-$env:OPENDLP_ENROLL_CODE = $enroll
-$env:OPENDLP_DB = Join-Path $work "opendlp.db"
+$env:LEAKWARDEN_TOKEN = New-Secret
+$env:LEAKWARDEN_ADMIN_TOKEN = $admin
+$env:LEAKWARDEN_ENROLL_CODE = $enroll
+$env:LEAKWARDEN_DB = Join-Path $work "leakwarden.db"
 $server = Start-Process python -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port $port" -WorkingDirectory (Join-Path $root "server") `
     -RedirectStandardOutput $serverLog -RedirectStandardError "$serverLog.err" -PassThru -NoNewWindow
 $up = $false
@@ -60,18 +60,18 @@ function Wait-Until([scriptblock]$cond, [int]$seconds, [string]$what) {
     }
     Fail "timed out after ${seconds}s waiting for: $what"
 }
-function Agent-Pid { (pgrep -f "opendlp-agent --config" 2>$null | Select-Object -First 1) }
+function Agent-Pid { (pgrep -f "leakwarden-agent --config" 2>$null | Select-Object -First 1) }
 
 # ---------- install like an end user ----------
 $tgz = Join-Path $work "pkg.tar.gz"
 tar -C (Split-Path $Publish) -czf $tgz (Split-Path $Publish -Leaf)
 $sha = (Get-FileHash $tgz -Algorithm SHA256).Hash.ToLower()
-$deploy = Join-Path $root "deploy/unix/deploy-opendlp.sh"
+$deploy = Join-Path $root "deploy/unix/deploy-leakwarden.sh"
 sudo bash $deploy --package $tgz --sha256 ("0" * 64) --version e2e --server-url $base --enrollment-code $enroll
 if ($LASTEXITCODE -eq 0) { Fail "deploy script accepted a package with a wrong checksum" }
 Write-Host "ok: tampered package refused"
 sudo bash $deploy --package $tgz --sha256 $sha --version e2e --server-url $base --enrollment-code $enroll --agent-id $agentId --display-name "E2E unix" --paths $watch
-if ($LASTEXITCODE -ne 0) { Fail "deploy-opendlp.sh exited with $LASTEXITCODE" }
+if ($LASTEXITCODE -ne 0) { Fail "deploy-leakwarden.sh exited with $LASTEXITCODE" }
 Start-Sleep 3
 $again = sudo bash $deploy --package $tgz --sha256 $sha --version e2e --server-url $base --enrollment-code $enroll
 if (-not ($again -match "already installed")) { Fail "second deploy run was not idempotent: $again" }
@@ -111,6 +111,6 @@ Write-Host "ok: clean uninstall"
 
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "UNIX SERVICE E2E PASSED"
-"## OpenDLP $(if ($isMac) {'macOS'} else {'Linux'}) service test passed`n`n- deploy-opendlp.sh: checksum enforced, idempotent re-run`n- install.sh with self-enrollment`n- root-only token and config (0600)`n- signed policy, content detection with masking`n- restart by $(if ($isMac) {'launchd'} else {'systemd'}) after crash`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## Leakwarden $(if ($isMac) {'macOS'} else {'Linux'}) service test passed`n`n- deploy-leakwarden.sh: checksum enforced, idempotent re-run`n- install.sh with self-enrollment`n- root-only token and config (0600)`n- signed policy, content detection with masking`n- restart by $(if ($isMac) {'launchd'} else {'systemd'}) after crash`n- clean uninstall" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 # The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
 exit 0

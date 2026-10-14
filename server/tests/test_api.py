@@ -137,7 +137,7 @@ def test_dashboard_renders_with_password(client):
     c, _ = client
     response = c.get("/", auth=("admin", "dash-pass"))
     assert response.status_code == 200
-    assert "OpenDLP" in response.text
+    assert "Leakwarden" in response.text
 
 
 def test_dashboard_disabled_by_default(client, monkeypatch):
@@ -508,8 +508,8 @@ def test_deploy_page_admin_only_and_filled_in(client, monkeypatch):
     monkeypatch.setattr(main, "PUBLIC_URL", "https://dlp.example.com")
     html = c.get("/deploy", auth=("admin", "dash-pass")).text
     assert ENROLL in html and "https://dlp.example.com" in html
-    assert f"releases/download/v{main.app.version}/Deploy-OpenDLP.ps1" in html
-    assert "deploy-opendlp.sh" in html and "Self-enrollment is disabled" not in html
+    assert f"releases/download/v{main.app.version}/Deploy-Leakwarden.ps1" in html
+    assert "deploy-leakwarden.sh" in html and "Self-enrollment is disabled" not in html
     assert c.get("/deploy", auth=("viewer", "view-pass")).status_code == 403
     assert c.get("/deploy").status_code == 401
     assert "Deploy agents" in c.get("/", auth=("admin", "dash-pass")).text
@@ -580,7 +580,7 @@ def test_monthly_report_email_sent_once(client, monkeypatch):
     nov1 = datetime(2026, 11, 1, 8, tzinfo=timezone.utc)
     assert main.run_monthly_report_job(nov1) == "2026-10"
     assert main.run_monthly_report_job(nov1) is None          # not twice
-    assert sent == [("OpenDLP data protection report 2026-10", "opendlp-report-2026-10.pdf", b"%PDF")]
+    assert sent == [("Leakwarden data protection report 2026-10", "leakwarden-report-2026-10.pdf", b"%PDF")]
     monkeypatch.setattr(main, "REPORT_EMAIL", False)
     assert main.run_monthly_report_job(datetime(2026, 12, 1, tzinfo=timezone.utc)) is None
 

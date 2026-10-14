@@ -1,4 +1,4 @@
-# OpenDLP Central Server - GPL-3.0-only
+# Leakwarden Central Server - GPL-3.0-only
 from __future__ import annotations
 
 import hashlib
@@ -30,78 +30,78 @@ import siem
 import sso
 
 # Must be set via environment variable; if unset, the API rejects all requests (fail closed).
-API_TOKEN = os.environ.get("OPENDLP_TOKEN", "").strip()
-DB_PATH = Path(os.environ.get("OPENDLP_DB", Path(__file__).parent / "opendlp.db"))
+API_TOKEN = os.environ.get("LEAKWARDEN_TOKEN", "").strip()
+DB_PATH = Path(os.environ.get("LEAKWARDEN_DB", Path(__file__).parent / "leakwarden.db"))
 MAX_EVENTS_PER_BATCH = 500
 MAX_MESSAGE_LEN = 8000
-MAX_BODY_BYTES = int(os.environ.get("OPENDLP_MAX_BODY_BYTES", str(2 * 1024 * 1024)))
+MAX_BODY_BYTES = int(os.environ.get("LEAKWARDEN_MAX_BODY_BYTES", str(2 * 1024 * 1024)))
 MIN_TOKEN_BYTES = 32
 VALID_LEVELS = {"DEBUG", "INFO", "WARN", "ALERT", "ERROR"}
 
 # Admin reads (events / agent list) use a separate token so no single endpoint can read all events.
-ADMIN_TOKEN = os.environ.get("OPENDLP_ADMIN_TOKEN", "").strip()
+ADMIN_TOKEN = os.environ.get("LEAKWARDEN_ADMIN_TOKEN", "").strip()
 # Optional JSON file {"agent-id": "per-agent-token (>=32 bytes)"}; registered agents must use their own token.
-AGENT_TOKENS_PATH = os.environ.get("OPENDLP_AGENT_TOKENS", "").strip()
+AGENT_TOKENS_PATH = os.environ.get("LEAKWARDEN_AGENT_TOKENS", "").strip()
 # Dashboard: set a password to enable HTTP Basic; if unset the dashboard is disabled (fail closed).
-DASHBOARD_USER = os.environ.get("OPENDLP_DASHBOARD_USER", "admin")
-DASHBOARD_PASSWORD = os.environ.get("OPENDLP_DASHBOARD_PASSWORD", "")
-DASHBOARD_INSECURE = os.environ.get("OPENDLP_DASHBOARD_INSECURE", "") == "1"
+DASHBOARD_USER = os.environ.get("LEAKWARDEN_DASHBOARD_USER", "admin")
+DASHBOARD_PASSWORD = os.environ.get("LEAKWARDEN_DASHBOARD_PASSWORD", "")
+DASHBOARD_INSECURE = os.environ.get("LEAKWARDEN_DASHBOARD_INSECURE", "") == "1"
 # Event retention in days; 0 = never purge.
-EVENT_RETENTION_DAYS = int(os.environ.get("OPENDLP_RETENTION_DAYS", "90"))
+EVENT_RETENTION_DAYS = int(os.environ.get("LEAKWARDEN_RETENTION_DAYS", "90"))
 # An agent that has not polled the server for this long is shown as "offline".
-OFFLINE_AFTER_SECONDS = int(os.environ.get("OPENDLP_OFFLINE_AFTER_SECONDS", "300"))
+OFFLINE_AFTER_SECONDS = int(os.environ.get("LEAKWARDEN_OFFLINE_AFTER_SECONDS", "300"))
 # Optional ECDSA P-256 private key (PEM) for asymmetric policy signatures. Generate with tools/gen_signing_key.py.
-SIGNING_KEY_PATH = os.environ.get("OPENDLP_SIGNING_KEY", "").strip()
+SIGNING_KEY_PATH = os.environ.get("LEAKWARDEN_SIGNING_KEY", "").strip()
 # Self-enrollment: an installer supplies this code once; the server issues that machine its own token.
-ENROLL_CODE = os.environ.get("OPENDLP_ENROLL_CODE", "").strip()
+ENROLL_CODE = os.environ.get("LEAKWARDEN_ENROLL_CODE", "").strip()
 # Read-only API token (dashboards, SIEM pull). Admin token can do everything a viewer can.
-VIEWER_TOKEN = os.environ.get("OPENDLP_VIEWER_TOKEN", "").strip()
-DASHBOARD_VIEWER_USER = os.environ.get("OPENDLP_DASHBOARD_VIEWER_USER", "viewer")
-DASHBOARD_VIEWER_PASSWORD = os.environ.get("OPENDLP_DASHBOARD_VIEWER_PASSWORD", "")
+VIEWER_TOKEN = os.environ.get("LEAKWARDEN_VIEWER_TOKEN", "").strip()
+DASHBOARD_VIEWER_USER = os.environ.get("LEAKWARDEN_DASHBOARD_VIEWER_USER", "viewer")
+DASHBOARD_VIEWER_PASSWORD = os.environ.get("LEAKWARDEN_DASHBOARD_VIEWER_PASSWORD", "")
 # Public URL agents use to reach this server (shown on the deploy page); defaults to the URL the admin browsed to.
-PUBLIC_URL = os.environ.get("OPENDLP_PUBLIC_URL", "").strip().rstrip("/")
+PUBLIC_URL = os.environ.get("LEAKWARDEN_PUBLIC_URL", "").strip().rstrip("/")
 # GitHub repository whose releases the deploy commands download from.
-RELEASE_REPO = os.environ.get("OPENDLP_RELEASE_REPO", "ewjfqwe475328u0rmcjidw/OpenDLP").strip()
+RELEASE_REPO = os.environ.get("LEAKWARDEN_RELEASE_REPO", "leakwarden/leakwarden").strip()
 # Monthly PDF report: organisation name on the cover, and whether to e-mail it (SMTP settings below) on the 1st.
-ORG_NAME = os.environ.get("OPENDLP_ORG_NAME", "Your organization").strip() or "Your organization"
-REPORT_EMAIL = os.environ.get("OPENDLP_REPORT_EMAIL", "") == "1"
+ORG_NAME = os.environ.get("LEAKWARDEN_ORG_NAME", "Your organization").strip() or "Your organization"
+REPORT_EMAIL = os.environ.get("LEAKWARDEN_REPORT_EMAIL", "") == "1"
 # Cloud drive scanning (report-only). Google: service-account JSON with domain-wide delegation + an admin to
 # impersonate for the user list. Microsoft 365: app registration with User.Read.All + Files.Read.All (application).
-GOOGLE_SA_FILE = os.environ.get("OPENDLP_GOOGLE_SA_FILE", "").strip()
-GOOGLE_ADMIN = os.environ.get("OPENDLP_GOOGLE_ADMIN_EMAIL", "").strip()
-GOOGLE_DOMAIN = os.environ.get("OPENDLP_GOOGLE_DOMAIN", "").strip()
-M365_TENANT = os.environ.get("OPENDLP_M365_TENANT_ID", "").strip()
-M365_CLIENT_ID = os.environ.get("OPENDLP_M365_CLIENT_ID", "").strip()
-M365_SECRET = os.environ.get("OPENDLP_M365_CLIENT_SECRET", "").strip()
-CLOUD_SCAN_HOURS = int(os.environ.get("OPENDLP_CLOUD_SCAN_HOURS", "24"))
+GOOGLE_SA_FILE = os.environ.get("LEAKWARDEN_GOOGLE_SA_FILE", "").strip()
+GOOGLE_ADMIN = os.environ.get("LEAKWARDEN_GOOGLE_ADMIN_EMAIL", "").strip()
+GOOGLE_DOMAIN = os.environ.get("LEAKWARDEN_GOOGLE_DOMAIN", "").strip()
+M365_TENANT = os.environ.get("LEAKWARDEN_M365_TENANT_ID", "").strip()
+M365_CLIENT_ID = os.environ.get("LEAKWARDEN_M365_CLIENT_ID", "").strip()
+M365_SECRET = os.environ.get("LEAKWARDEN_M365_CLIENT_SECRET", "").strip()
+CLOUD_SCAN_HOURS = int(os.environ.get("LEAKWARDEN_CLOUD_SCAN_HOURS", "24"))
 # Outbound e-mail scanning (report-only): reuses the cloud credentials above plus Mail.Read / gmail.readonly.
-EMAIL_SCAN = os.environ.get("OPENDLP_EMAIL_SCAN", "") == "1"
-EMAIL_INTERNAL_DOMAINS = {d.strip().lower().lstrip("@") for d in os.environ.get("OPENDLP_EMAIL_INTERNAL_DOMAINS", "").split(",") if d.strip()}
+EMAIL_SCAN = os.environ.get("LEAKWARDEN_EMAIL_SCAN", "") == "1"
+EMAIL_INTERNAL_DOMAINS = {d.strip().lower().lstrip("@") for d in os.environ.get("LEAKWARDEN_EMAIL_INTERNAL_DOMAINS", "").split(",") if d.strip()}
 # Notifications for high/critical alerts: generic JSON webhook (Slack/Discord/Teams/Mattermost/n8n…) and/or SMTP e-mail.
-WEBHOOK_URL = os.environ.get("OPENDLP_WEBHOOK_URL", "").strip()
-NOTIFY_MIN_SEVERITY = os.environ.get("OPENDLP_NOTIFY_MIN_SEVERITY", "high").lower()
-NOTIFY_COOLDOWN_SECONDS = int(os.environ.get("OPENDLP_NOTIFY_COOLDOWN_SECONDS", "300"))
-SMTP_HOST = os.environ.get("OPENDLP_SMTP_HOST", "").strip()
-SMTP_PORT = int(os.environ.get("OPENDLP_SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("OPENDLP_SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("OPENDLP_SMTP_PASSWORD", "")
-SMTP_FROM = os.environ.get("OPENDLP_SMTP_FROM", "")
-SMTP_TO = [x.strip() for x in os.environ.get("OPENDLP_SMTP_TO", "").split(",") if x.strip()]
-SMTP_STARTTLS = os.environ.get("OPENDLP_SMTP_STARTTLS", "1") != "0"
+WEBHOOK_URL = os.environ.get("LEAKWARDEN_WEBHOOK_URL", "").strip()
+NOTIFY_MIN_SEVERITY = os.environ.get("LEAKWARDEN_NOTIFY_MIN_SEVERITY", "high").lower()
+NOTIFY_COOLDOWN_SECONDS = int(os.environ.get("LEAKWARDEN_NOTIFY_COOLDOWN_SECONDS", "300"))
+SMTP_HOST = os.environ.get("LEAKWARDEN_SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("LEAKWARDEN_SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("LEAKWARDEN_SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("LEAKWARDEN_SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("LEAKWARDEN_SMTP_FROM", "")
+SMTP_TO = [x.strip() for x in os.environ.get("LEAKWARDEN_SMTP_TO", "").split(",") if x.strip()]
+SMTP_STARTTLS = os.environ.get("LEAKWARDEN_SMTP_STARTTLS", "1") != "0"
 # Tamper-evident event log: HMAC key for the hash chain. Keep it outside the database (env / secrets manager).
-AUDIT_KEY = os.environ.get("OPENDLP_AUDIT_KEY", "").strip().encode("utf-8")
+AUDIT_KEY = os.environ.get("LEAKWARDEN_AUDIT_KEY", "").strip().encode("utf-8")
 # SIEM forwarding: udp://host:514, tcp://host:514 or tls://host:6514; format cef (default) or json.
-SYSLOG_URL = os.environ.get("OPENDLP_SYSLOG", "").strip()
-SYSLOG_FORMAT = os.environ.get("OPENDLP_SYSLOG_FORMAT", "cef").strip().lower()
+SYSLOG_URL = os.environ.get("LEAKWARDEN_SYSLOG", "").strip()
+SYSLOG_FORMAT = os.environ.get("LEAKWARDEN_SYSLOG_FORMAT", "cef").strip().lower()
 # Dashboard single sign-on (OpenID Connect). Admins / viewers: comma-separated addresses or @domain entries.
-OIDC_ISSUER = os.environ.get("OPENDLP_OIDC_ISSUER", "").strip()
-OIDC_CLIENT_ID = os.environ.get("OPENDLP_OIDC_CLIENT_ID", "").strip()
-OIDC_CLIENT_SECRET = os.environ.get("OPENDLP_OIDC_CLIENT_SECRET", "").strip()
-OIDC_ADMINS = os.environ.get("OPENDLP_OIDC_ADMINS", "")
-OIDC_VIEWERS = os.environ.get("OPENDLP_OIDC_VIEWERS", "")
-SESSION_HOURS = int(os.environ.get("OPENDLP_SESSION_HOURS", "8"))
+OIDC_ISSUER = os.environ.get("LEAKWARDEN_OIDC_ISSUER", "").strip()
+OIDC_CLIENT_ID = os.environ.get("LEAKWARDEN_OIDC_CLIENT_ID", "").strip()
+OIDC_CLIENT_SECRET = os.environ.get("LEAKWARDEN_OIDC_CLIENT_SECRET", "").strip()
+OIDC_ADMINS = os.environ.get("LEAKWARDEN_OIDC_ADMINS", "")
+OIDC_VIEWERS = os.environ.get("LEAKWARDEN_OIDC_VIEWERS", "")
+SESSION_HOURS = int(os.environ.get("LEAKWARDEN_SESSION_HOURS", "8"))
 # Signs dashboard session cookies. If unset a random key is used (everyone is signed out on restart).
-SESSION_SECRET = (os.environ.get("OPENDLP_SESSION_SECRET", "").strip() or secrets.token_hex(32)).encode("utf-8")
+SESSION_SECRET = (os.environ.get("LEAKWARDEN_SESSION_SECRET", "").strip() or secrets.token_hex(32)).encode("utf-8")
 VERSION = "0.13.0"
 
 _stop_scheduler = threading.Event()
@@ -134,12 +134,12 @@ def run_monthly_report_job(now: datetime | None = None) -> str | None:
 async def lifespan(_app: FastAPI):
     purge_old_events()
     _stop_scheduler.clear()
-    threading.Thread(target=_report_scheduler, daemon=True, name="opendlp-report").start()
+    threading.Thread(target=_report_scheduler, daemon=True, name="leakwarden-report").start()
     yield
     _stop_scheduler.set()
 
 
-app = FastAPI(title="OpenDLP Central Server", version=VERSION, lifespan=lifespan)
+app = FastAPI(title="Leakwarden Central Server", version=VERSION, lifespan=lifespan)
 _basic = HTTPBasic(auto_error=False)
 
 
@@ -305,9 +305,9 @@ def token_for_agent(agent_id: str) -> str:
             raise HTTPException(status_code=503, detail="Per-agent token is too short")
         return per_agent
     if not API_TOKEN:
-        raise HTTPException(status_code=503, detail="Server is not configured: set OPENDLP_TOKEN")
+        raise HTTPException(status_code=503, detail="Server is not configured: set LEAKWARDEN_TOKEN")
     if len(API_TOKEN.encode("utf-8")) < MIN_TOKEN_BYTES:
-        raise HTTPException(status_code=503, detail="OPENDLP_TOKEN must be at least 32 bytes")
+        raise HTTPException(status_code=503, detail="LEAKWARDEN_TOKEN must be at least 32 bytes")
     return API_TOKEN
 
 
@@ -317,7 +317,7 @@ def auth(
 ) -> str:
     """Agent authentication: returns the verified agent id."""
     if not API_TOKEN and not AGENT_TOKENS_PATH:
-        raise HTTPException(status_code=503, detail="Server is not configured: set OPENDLP_TOKEN")
+        raise HTTPException(status_code=503, detail="Server is not configured: set LEAKWARDEN_TOKEN")
     token = _bearer(authorization)
     if not x_agent_id or not x_agent_id.strip() or len(x_agent_id) > 128:
         raise HTTPException(status_code=400, detail="Missing or invalid X-Agent-Id header")
@@ -354,7 +354,7 @@ def signing_secret_for_agent(agent_id: str) -> str:
 def admin_auth(authorization: str | None = Header(default=None)) -> str:
     """Full administrative access. Returns the role name."""
     if not ADMIN_TOKEN or len(ADMIN_TOKEN.encode("utf-8")) < MIN_TOKEN_BYTES:
-        raise HTTPException(status_code=503, detail="Server is not configured: set OPENDLP_ADMIN_TOKEN (>=32 bytes)")
+        raise HTTPException(status_code=503, detail="Server is not configured: set LEAKWARDEN_ADMIN_TOKEN (>=32 bytes)")
     if not _token_ok(_bearer(authorization), ADMIN_TOKEN):
         raise HTTPException(status_code=403, detail="Invalid token")
     return "admin"
@@ -363,7 +363,7 @@ def admin_auth(authorization: str | None = Header(default=None)) -> str:
 def viewer_auth(authorization: str | None = Header(default=None)) -> str:
     """Read-only access: admin token or viewer token. Returns the role name."""
     if not ADMIN_TOKEN or len(ADMIN_TOKEN.encode("utf-8")) < MIN_TOKEN_BYTES:
-        raise HTTPException(status_code=503, detail="Server is not configured: set OPENDLP_ADMIN_TOKEN (>=32 bytes)")
+        raise HTTPException(status_code=503, detail="Server is not configured: set LEAKWARDEN_ADMIN_TOKEN (>=32 bytes)")
     token = _bearer(authorization)
     if _token_ok(token, ADMIN_TOKEN):
         return "admin"
@@ -372,8 +372,8 @@ def viewer_auth(authorization: str | None = Header(default=None)) -> str:
     raise HTTPException(status_code=403, detail="Invalid token")
 
 
-SESSION_COOKIE = "opendlp_session"
-LOGIN_COOKIE = "opendlp_login"
+SESSION_COOKIE = "leakwarden_session"
+LOGIN_COOKIE = "leakwarden_login"
 _oidc: sso.Provider | None = (
     sso.Provider(OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, cloudscan.default_http)
     if OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET else None
@@ -420,8 +420,8 @@ def dashboard_auth(request: Request, credentials: HTTPBasicCredentials | None = 
     if not DASHBOARD_INSECURE:
         raise HTTPException(
             status_code=404,
-            detail="Dashboard disabled: set OPENDLP_DASHBOARD_PASSWORD or OIDC single sign-on "
-            "(or OPENDLP_DASHBOARD_INSECURE=1 for local dev only)",
+            detail="Dashboard disabled: set LEAKWARDEN_DASHBOARD_PASSWORD or OIDC single sign-on "
+            "(or LEAKWARDEN_DASHBOARD_INSECURE=1 for local dev only)",
         )
     request.state.actor = "insecure-dev"
     return "admin"
@@ -598,7 +598,7 @@ def send_notifications(alerts: list[dict[str, Any]]) -> int:
 
     def run() -> None:
         for a in todo:
-            summary = f"[OpenDLP] {_severity_of(a['message']).upper()} alert on {a['agent_id']} ({a['host'] or 'unknown host'}): {a['event_type']}"
+            summary = f"[Leakwarden] {_severity_of(a['message']).upper()} alert on {a['agent_id']} ({a['host'] or 'unknown host'}): {a['event_type']}"
             body = {"text": summary + "\n" + a["message"][:1000], "content": summary, **a}
             if WEBHOOK_URL:
                 try:
@@ -615,9 +615,9 @@ def send_notifications(alerts: list[dict[str, Any]]) -> int:
     return len(todo)
 
 
-POLICY_PATH = Path(os.environ.get("OPENDLP_POLICY", Path(__file__).resolve().parent.parent / "policies" / "default-policy.json"))
+POLICY_PATH = Path(os.environ.get("LEAKWARDEN_POLICY", Path(__file__).resolve().parent.parent / "policies" / "default-policy.json"))
 # Explicit value pins the version; otherwise the policy file mtime is used (monotonic), so edits propagate automatically.
-_env_version = os.environ.get("OPENDLP_POLICY_VERSION", "").strip()
+_env_version = os.environ.get("LEAKWARDEN_POLICY_VERSION", "").strip()
 POLICY_VERSION: int | None = int(_env_version) if _env_version else None
 
 _SEVERITIES = {"low", "medium", "high", "critical"}
@@ -716,7 +716,7 @@ def _load_signing_key():
 
         key = serialization.load_pem_private_key(Path(SIGNING_KEY_PATH).read_bytes(), password=None)
         if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
-            raise HTTPException(status_code=500, detail="OPENDLP_SIGNING_KEY must be an ECDSA P-256 key")
+            raise HTTPException(status_code=500, detail="LEAKWARDEN_SIGNING_KEY must be an ECDSA P-256 key")
         return key
     except HTTPException:
         raise
@@ -971,7 +971,7 @@ def export_events_csv(
     return Response(
         content=buf.getvalue(),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="opendlp-events.csv"'},
+        headers={"Content-Disposition": 'attachment; filename="leakwarden-events.csv"'},
     )
 
 
@@ -1099,7 +1099,7 @@ def admin_put_policy(policy: dict[str, Any], _admin: str = Depends(admin_auth)) 
     return {
         "ok": True,
         "version": POLICY_VERSION if POLICY_VERSION is not None else new_mtime,
-        "note": "OPENDLP_POLICY_VERSION is pinned; agents will not update until it is raised"
+        "note": "LEAKWARDEN_POLICY_VERSION is pinned; agents will not update until it is raised"
         if POLICY_VERSION is not None
         else "agents will pick this up on their next poll",
     }
@@ -1121,7 +1121,7 @@ def enroll(req: EnrollRequest) -> dict[str, Any]:
     """Exchange the one-time enrollment code for a per-machine token. Re-enrolling an existing,
     non-revoked agent rotates its token (so a reinstalled machine keeps working)."""
     if not ENROLL_CODE or len(ENROLL_CODE.encode("utf-8")) < 16:
-        raise HTTPException(status_code=503, detail="Enrollment disabled: set OPENDLP_ENROLL_CODE (>=16 bytes)")
+        raise HTTPException(status_code=503, detail="Enrollment disabled: set LEAKWARDEN_ENROLL_CODE (>=16 bytes)")
     if not _token_ok(req.enrollmentCode, ENROLL_CODE):
         raise HTTPException(status_code=403, detail="Invalid enrollment code")
     agent_id = req.agentId.strip()
@@ -1204,7 +1204,7 @@ def delete_agent(agent_id: str, _admin: str = Depends(admin_auth)) -> dict[str, 
 def notify_test(_admin: str = Depends(admin_auth)) -> dict[str, Any]:
     n = send_notifications([{
         "agent_id": "test", "host": "test-host", "ts": datetime.now(timezone.utc).isoformat(),
-        "event_type": "NOTIFY_TEST", "message": "severity=critical This is a test notification from OpenDLP",
+        "event_type": "NOTIFY_TEST", "message": "severity=critical This is a test notification from Leakwarden",
     }])
     return {"dispatched": n, "webhook": bool(WEBHOOK_URL), "email": bool(SMTP_HOST and SMTP_TO)}
 
@@ -1432,7 +1432,7 @@ def emailscan_run(_admin: str = Depends(admin_auth)) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="E-mail scanning is not enabled (see docs/EMAIL-SCAN.md)")
     if _email_status["running"]:
         raise HTTPException(status_code=409, detail="A scan is already running")
-    threading.Thread(target=run_email_scan, daemon=True, name="opendlp-emailscan").start()
+    threading.Thread(target=run_email_scan, daemon=True, name="leakwarden-emailscan").start()
     record_admin_action("api-admin-token", "emailscan_run", "sources=" + ",".join(cloud_sources()))
     return {"started": True, "sources": cloud_sources()}
 
@@ -1448,7 +1448,7 @@ def cloudscan_run(_admin: str = Depends(admin_auth)) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="No cloud source configured (see docs/CLOUD-SCAN.md)")
     if _cloud_status["running"]:
         raise HTTPException(status_code=409, detail="A scan is already running")
-    threading.Thread(target=run_cloud_scan, daemon=True, name="opendlp-cloudscan").start()
+    threading.Thread(target=run_cloud_scan, daemon=True, name="leakwarden-cloudscan").start()
     record_admin_action("api-admin-token", "cloudscan_run", "sources=" + ",".join(cloud_sources()))
     return {"started": True, "sources": cloud_sources()}
 
@@ -1543,7 +1543,7 @@ def _report_response(month: str | None) -> Response:
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="opendlp-report-{label}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="leakwarden-report-{label}.pdf"'},
     )
 
 
@@ -1774,7 +1774,7 @@ def sso_callback(request: Request, code: str = "", state: str = "", error: str =
 
 @app.get("/logout", response_class=HTMLResponse)
 def sso_logout() -> HTMLResponse:
-    resp = HTMLResponse("<!doctype html><title>Signed out</title><p>You are signed out of OpenDLP. "
+    resp = HTMLResponse("<!doctype html><title>Signed out</title><p>You are signed out of Leakwarden. "
                         "<a href=\"/login\">Sign in again</a></p>")
     resp.delete_cookie(SESSION_COOKIE, path="/")
     return resp

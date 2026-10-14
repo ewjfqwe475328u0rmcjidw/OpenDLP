@@ -1,13 +1,13 @@
-name: Support plan - interest
-description: Tell us you'd want a paid support plan for your self-hosted OpenDLP
-title: "[Support] interest"
-labels: ["support-interest"]
+name: Deploy Kit - interest
+description: Tell us you'd want the paid Leakwarden Deploy Kit
+title: "[Deploy Kit] interest"
+labels: ["deploy-kit-interest"]
 body:
   - type: markdown
     attributes:
       value: |
-        Support plans help you install, configure and keep **your own** OpenDLP server running. We never host,
-        receive or access your data. See the README for prices and terms. Nothing to pay now.
+        The Deploy Kit is tooling that installs and rolls out Leakwarden on **your own** server. No hosting, no access
+        to your data, no support service. See the README for prices and terms. Nothing to pay now.
 
         **This issue is public.** Don't post your company name, logs, policies, alerts or anything confidential.
   - type: dropdown
@@ -34,9 +34,9 @@ body:
     id: price
     attributes:
       label: Would the listed price work for you?
-      options: ["Yes", "Yes, if billed yearly", "Too expensive", "I'd pay more for extra help (tell us below)"]
+      options: ["Yes", "Yes, if billed yearly", "Too expensive", "I'd pay more for more (tell us below)"]
   - type: textarea
     id: needs
     attributes:
-      label: What help would make it worth paying for?
-      description: e.g. installation help, policy tuning, deployment scripts for your tools, a feature you need
+      label: What would make the kit worth paying for?
+      description: e.g. your cloud provider, your device-management tool (Intune, Jamf, ...), your industry for policy presets

@@ -114,10 +114,10 @@ def test_cef_format_escapes_and_maps_severity():
     ev = {"id": 7, "agent_id": "pc|1", "ts": "2026-01-01T00:00:00+00:00", "level": "ALERT", "event_type": "USB_BLOCK",
           "message": "a=b\nc\\d", "host": "HOST", "chain": "ff"}
     cef = siem.format_cef(ev, "critical", "0.14.0")
-    assert cef.startswith("CEF:0|OpenDLP|OpenDLP|0.14.0|USB_BLOCK|USB_BLOCK|10|")
+    assert cef.startswith("CEF:0|Leakwarden|Leakwarden|0.14.0|USB_BLOCK|USB_BLOCK|10|")
     assert "msg=a\\=b\\nc\\\\d" in cef and "deviceExternalId=pc|1" in cef and "cs3=ff" in cef
     line = siem.syslog_line(ev, cef).decode()
-    assert line.startswith("<81>1 ") and " opendlp - USB_BLOCK - CEF:0|" in line
+    assert line.startswith("<81>1 ") and " leakwarden - USB_BLOCK - CEF:0|" in line
     assert json.loads(siem.format_json(ev, "critical", ""))["severity"] == "critical"
     with pytest.raises(ValueError):
         siem.Forwarder("http://siem:514")
@@ -244,7 +244,7 @@ def test_merge_policy_rules():
 
 # --------------------------------------------------------------------------- OIDC single sign-on
 ISS = "https://idp.example.com/tenant"
-CID = "opendlp-client"
+CID = "leakwarden-client"
 
 
 class FakeIdp:

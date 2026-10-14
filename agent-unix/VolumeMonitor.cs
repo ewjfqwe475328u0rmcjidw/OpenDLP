@@ -1,5 +1,5 @@
-// OpenDLP Agent (macOS / Linux) - GPL-3.0-only
-namespace OpenDLP.Agent;
+// Leakwarden Agent (macOS / Linux) - GPL-3.0-only
+namespace Leakwarden.Agent;
 
 /// <summary>
 /// Removable-volume auditing: polls the mount roots (/Volumes on macOS; /media, /run/media on Linux),

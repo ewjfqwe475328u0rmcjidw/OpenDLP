@@ -1,10 +1,10 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Runtime.Versioning;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage.Streams;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 /// <summary>Built-in Windows 10/11 OCR (Windows.Media.Ocr): no download, runs on the device, uses the installed languages.</summary>
 [SupportedOSPlatform("windows10.0.17763.0")]

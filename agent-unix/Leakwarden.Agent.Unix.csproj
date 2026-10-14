@@ -6,11 +6,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>opendlp-agent</AssemblyName>
-    <RootNamespace>OpenDLP.Agent</RootNamespace>
+    <AssemblyName>leakwarden-agent</AssemblyName>
+    <RootNamespace>Leakwarden.Agent</RootNamespace>
     <Version>0.13.0</Version>
-    <Authors>OpenDLP Contributors</Authors>
-    <Description>OpenDLP endpoint agent for macOS and Linux (file monitoring, content inspection, removable volumes)</Description>
+    <Authors>Leakwarden Contributors</Authors>
+    <Description>Leakwarden endpoint agent for macOS and Linux (file monitoring, content inspection, removable volumes)</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
 

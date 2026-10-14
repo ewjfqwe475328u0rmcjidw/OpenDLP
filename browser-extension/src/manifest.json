@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "OpenDLP",
-  "short_name": "OpenDLP",
+  "name": "Leakwarden",
+  "short_name": "Leakwarden",
   "version": "0.13.0",
   "description": "Open-source data loss prevention: warns about or blocks pasting and uploading sensitive data to AI chats, cloud drives and file-sharing sites.",
   "permissions": ["storage", "alarms"],

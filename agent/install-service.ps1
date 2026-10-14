@@ -1,7 +1,7 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Installs the OpenDLP Agent as a Windows service. Run from the extracted release zip in an elevated PowerShell.
+  Installs the Leakwarden Agent as a Windows service. Run from the extracted release zip in an elevated PowerShell.
 .EXAMPLE
   .\install-service.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "paste-code-from-admin" -WithWatchdog
 .EXAMPLE
@@ -11,8 +11,8 @@
   If an agent.config.json sits next to this script it is used as-is; otherwise one is generated from the parameters.
 #>
 param(
-    [string]$InstallDir = "C:\Program Files\OpenDLP",
-    [string]$ServiceName = "OpenDLPAgent",
+    [string]$InstallDir = "C:\Program Files\Leakwarden",
+    [string]$ServiceName = "LeakwardenAgent",
     [string]$ServerUrl = "",
     [string]$EnrollmentCode = "",
     [string]$AgentId = $env:COMPUTERNAME,
@@ -23,8 +23,8 @@ param(
 $ErrorActionPreference = "Stop"
 $src = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-if (-not (Test-Path (Join-Path $src "OpenDLP.Agent.exe"))) {
-    throw "OpenDLP.Agent.exe not found next to this script. Run it from the extracted release zip or a 'dotnet publish' output."
+if (-not (Test-Path (Join-Path $src "Leakwarden.Agent.exe"))) {
+    throw "Leakwarden.Agent.exe not found next to this script. Run it from the extracted release zip or a 'dotnet publish' output."
 }
 
 # ---- 1. build the configuration in memory (never leave a copy with secrets in the download folder) ----
@@ -46,16 +46,16 @@ if (Test-Path $srcCfg) {
 }
 
 # ---- 2. stop a previous installation so its files are not locked ----
-if (Get-ScheduledTask -TaskName "OpenDLP Watchdog" -ErrorAction SilentlyContinue) {
-    Stop-ScheduledTask -TaskName "OpenDLP Watchdog" -ErrorAction SilentlyContinue
+if (Get-ScheduledTask -TaskName "Leakwarden Watchdog" -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName "Leakwarden Watchdog" -ErrorAction SilentlyContinue
 }
-Get-Process OpenDLP.Watchdog -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process Leakwarden.Watchdog -ErrorAction SilentlyContinue | Stop-Process -Force
 if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
     Stop-Service $ServiceName -Force -ErrorAction SilentlyContinue
     sc.exe delete $ServiceName | Out-Null
     Start-Sleep -Seconds 3
 }
-Get-Process OpenDLP.Agent -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process Leakwarden.Agent -ErrorAction SilentlyContinue | Stop-Process -Force
 
 # ---- 3. copy files and write the config ----
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -88,29 +88,29 @@ $cacl.AddAccessRule((New-Rule $ADMINS "FullControl" "None"))
 Set-Acl $cfgInstalled $cacl
 
 # ---- 5. service ----
-$exe = Join-Path $InstallDir "OpenDLP.Agent.exe"
+$exe = Join-Path $InstallDir "Leakwarden.Agent.exe"
 # New-Service quotes the path correctly on both PowerShell 5.1 and 7 (paths with spaces).
-New-Service -Name $ServiceName -BinaryPathName "`"$exe`" --mode service" -DisplayName "OpenDLP Endpoint Agent" `
-    -Description "OpenDLP open-source endpoint audit/detection agent" -StartupType Automatic | Out-Null
+New-Service -Name $ServiceName -BinaryPathName "`"$exe`" --mode service" -DisplayName "Leakwarden Endpoint Agent" `
+    -Description "Leakwarden open-source endpoint audit/detection agent" -StartupType Automatic | Out-Null
 sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null
 Start-Service $ServiceName
 
 # ---- 6. optional watchdog (restarts the service if it stops or hangs) ----
-if ($WithWatchdog -and (Test-Path (Join-Path $InstallDir "OpenDLP.Watchdog.exe"))) {
-    $wd = Join-Path $InstallDir "OpenDLP.Watchdog.exe"
+if ($WithWatchdog -and (Test-Path (Join-Path $InstallDir "Leakwarden.Watchdog.exe"))) {
+    $wd = Join-Path $InstallDir "Leakwarden.Watchdog.exe"
     $action = New-ScheduledTaskAction -Execute $wd -Argument "--service $ServiceName"
     $trigger = New-ScheduledTaskTrigger -AtStartup
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
     $principal = New-ScheduledTaskPrincipal -UserId "S-1-5-18" -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName "OpenDLP Watchdog" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-    Start-ScheduledTask -TaskName "OpenDLP Watchdog"
+    Register-ScheduledTask -TaskName "Leakwarden Watchdog" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+    Start-ScheduledTask -TaskName "Leakwarden Watchdog"
 }
 
 # ---- 7. per-user clipboard helper at logon ----
 $helperAction = New-ScheduledTaskAction -Execute $exe -Argument "--mode helper"
 $helperTrigger = New-ScheduledTaskTrigger -AtLogOn
 $helperPrincipal = New-ScheduledTaskPrincipal -GroupId "S-1-5-32-545" -RunLevel Limited
-Register-ScheduledTask -TaskName "OpenDLP Helper" -Action $helperAction -Trigger $helperTrigger -Principal $helperPrincipal -Force | Out-Null
+Register-ScheduledTask -TaskName "Leakwarden Helper" -Action $helperAction -Trigger $helperTrigger -Principal $helperPrincipal -Force | Out-Null
 
 Write-Host "Installed. Service '$ServiceName' status: $((Get-Service $ServiceName).Status)"
-Write-Host "Logs: $env:ProgramData\OpenDLP\logs   Uninstall: & '$InstallDir\uninstall-service.ps1'"
+Write-Host "Logs: $env:ProgramData\Leakwarden\logs   Uninstall: & '$InstallDir\uninstall-service.ps1'"

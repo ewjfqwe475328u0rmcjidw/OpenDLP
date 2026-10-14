@@ -1,6 +1,6 @@
 # Optional AI classification (self-hosted model)
 
-Rules and fingerprints catch structured data (cards, IDs, keys) and known files. Some confidential documents have no fixed pattern - a draft contract, unreleased financials, an M&A memo. OpenDLP can optionally ask a **model your organisation runs itself** to classify documents that no rule matched.
+Rules and fingerprints catch structured data (cards, IDs, keys) and known files. Some confidential documents have no fixed pattern - a draft contract, unreleased financials, an M&A memo. Leakwarden can optionally ask a **model your organisation runs itself** to classify documents that no rule matched.
 
 **Off by default.** Document text is sent only to the endpoint you configure. Do not point it at a third-party AI service unless your policy allows sending documents there - that would itself be a data leak.
 

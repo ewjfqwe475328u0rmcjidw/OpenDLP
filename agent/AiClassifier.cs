@@ -1,8 +1,8 @@
-// OpenDLP Agent - GPL-3.0-only (shared by the Windows and macOS/Linux agents)
+// Leakwarden Agent - GPL-3.0-only (shared by the Windows and macOS/Linux agents)
 using System.Net.Http.Json;
 using System.Text.Json;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 /// <summary>
 /// Optional document classification by a model the organisation runs itself (Ollama-compatible

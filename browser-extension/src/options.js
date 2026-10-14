@@ -1,4 +1,4 @@
-// OpenDLP browser extension - options page - GPL-3.0-only
+// Leakwarden browser extension - options page - GPL-3.0-only
 async function refresh() {
   const s = await chrome.runtime.sendMessage({ type: "status" });
   const c = s.config || {};

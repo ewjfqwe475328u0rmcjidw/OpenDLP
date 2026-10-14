@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate an ECDSA P-256 key pair for asymmetric policy signing.
 
-  python tools/gen_signing_key.py /etc/opendlp/policy-signing.pem
+  python tools/gen_signing_key.py /etc/leakwarden/policy-signing.pem
 
-Keep the private key on the server only (OPENDLP_SIGNING_KEY). Put the printed PUBLIC key
+Keep the private key on the server only (LEAKWARDEN_SIGNING_KEY). Put the printed PUBLIC key
 into each agent's agent.config.json as "PolicySigningPublicKey" (single line with \\n escapes
 or a JSON string with real newlines).
 """

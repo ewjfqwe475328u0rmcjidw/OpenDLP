@@ -1,5 +1,5 @@
-// OpenDLP Agent - GPL-3.0-only (shared by the Windows and macOS agents)
-namespace OpenDLP.Agent;
+// Leakwarden Agent - GPL-3.0-only (shared by the Windows and macOS agents)
+namespace Leakwarden.Agent;
 
 public static class AgentVersion
 {

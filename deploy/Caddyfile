@@ -1,4 +1,4 @@
-{$OPENDLP_DOMAIN} {
+{$LEAKWARDEN_DOMAIN} {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -6,5 +6,5 @@
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
 	}
-	reverse_proxy opendlp-server:8000
+	reverse_proxy leakwarden-server:8000
 }

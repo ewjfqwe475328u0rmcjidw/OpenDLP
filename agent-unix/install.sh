@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenDLP agent installer for macOS (launchd) and Linux (systemd). Run from the extracted release folder:
+# Leakwarden agent installer for macOS (launchd) and Linux (systemd). Run from the extracted release folder:
 #
 #   sudo ./install.sh --server-url https://dlp.example.com --enrollment-code "CODE"
 #   sudo ./install.sh --server-url ... --enrollment-code ... --paths "{AllUsers}/Documents,/srv/finance" --agent-id mac-042
@@ -25,16 +25,16 @@ done
 [ -n "$SERVER_URL" ] && [ -n "$ENROLL" ] || { echo "--server-url and --enrollment-code are required." >&2; exit 2; }
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
-[ -x "$SRC/opendlp-agent" ] || chmod +x "$SRC/opendlp-agent" 2>/dev/null || true
-[ -f "$SRC/opendlp-agent" ] || { echo "opendlp-agent binary not found next to this script." >&2; exit 1; }
+[ -x "$SRC/leakwarden-agent" ] || chmod +x "$SRC/leakwarden-agent" 2>/dev/null || true
+[ -f "$SRC/leakwarden-agent" ] || { echo "leakwarden-agent binary not found next to this script." >&2; exit 1; }
 
 OS="$(uname -s)"
 if [ "$OS" = "Darwin" ]; then
-  DATA="/Library/Application Support/OpenDLP"; BIN="$DATA/bin"; LABEL="org.opendlp.agent"
+  DATA="/Library/Application Support/Leakwarden"; BIN="$DATA/bin"; LABEL="org.leakwarden.agent"
   PLIST="/Library/LaunchDaemons/$LABEL.plist"
   DEFAULT_PATHS='"{AllUsers}/Desktop","{AllUsers}/Documents","{AllUsers}/Downloads"'
 else
-  DATA="/var/lib/opendlp"; BIN="/opt/opendlp"; UNIT="/etc/systemd/system/opendlp-agent.service"
+  DATA="/var/lib/leakwarden"; BIN="/opt/leakwarden"; UNIT="/etc/systemd/system/leakwarden-agent.service"
   DEFAULT_PATHS='"{AllUsers}/Desktop","{AllUsers}/Documents","{AllUsers}/Downloads"'
 fi
 
@@ -51,7 +51,7 @@ fi
 if [ "$OS" = "Darwin" ]; then
   launchctl bootout system "$PLIST" 2>/dev/null || true
 else
-  systemctl stop opendlp-agent 2>/dev/null || true
+  systemctl stop leakwarden-agent 2>/dev/null || true
 fi
 
 # ---- files ----
@@ -61,7 +61,7 @@ for f in "$SRC"/*; do
   case "$(basename "$f")" in agent.config.json|install.sh|uninstall.sh) ;; *) cp -R "$f" "$BIN/" ;; esac
 done
 cp "$SRC/uninstall.sh" "$BIN/" 2>/dev/null || true
-chmod 755 "$BIN/opendlp-agent"
+chmod 755 "$BIN/leakwarden-agent"
 chown -R root "$BIN" "$DATA"
 [ "$OS" = "Darwin" ] && xattr -dr com.apple.quarantine "$BIN" 2>/dev/null || true
 
@@ -91,7 +91,7 @@ if [ "$OS" = "Darwin" ]; then
 <dict>
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
-  <array><string>$BIN/opendlp-agent</string><string>--config</string><string>$CFG</string></array>
+  <array><string>$BIN/leakwarden-agent</string><string>--config</string><string>$CFG</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>5</integer>
@@ -104,16 +104,16 @@ PLISTEOF
   launchctl bootstrap system "$PLIST"
   launchctl enable "system/$LABEL" || true
   echo "Installed. Status: launchctl print system/$LABEL | grep state"
-  echo "Grant Full Disk Access to $BIN/opendlp-agent (or deploy a PPPC profile) so protected folders can be monitored."
+  echo "Grant Full Disk Access to $BIN/leakwarden-agent (or deploy a PPPC profile) so protected folders can be monitored."
 else
   cat > "$UNIT" <<UNITEOF
 [Unit]
-Description=OpenDLP endpoint agent
+Description=Leakwarden endpoint agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=$BIN/opendlp-agent --config $CFG
+ExecStart=$BIN/leakwarden-agent --config $CFG
 Restart=always
 RestartSec=5
 User=root
@@ -122,7 +122,7 @@ User=root
 WantedBy=multi-user.target
 UNITEOF
   systemctl daemon-reload
-  systemctl enable --now opendlp-agent
-  echo "Installed. Status: systemctl status opendlp-agent"
+  systemctl enable --now leakwarden-agent
+  echo "Installed. Status: systemctl status leakwarden-agent"
 fi
 echo "Logs: $DATA/logs   Uninstall: sudo \"$BIN/uninstall.sh\""

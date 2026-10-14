@@ -1,4 +1,4 @@
-# Contributing to OpenDLP
+# Contributing to Leakwarden
 
 Thanks for helping! The most valuable contribution right now is **testing the Windows Agent** on a real machine.
 
@@ -10,7 +10,7 @@ Thanks for helping! The most valuable contribution right now is **testing the Wi
 
 ## Develop
 - Server: `cd server && pip install -r requirements.txt -r requirements-dev.txt && python -m pytest -q`
-- Agent: `.NET 8 SDK`, `dotnet build agent/OpenDLP.Agent.csproj`
+- Agent: `.NET 8 SDK`, `dotnet build agent/Leakwarden.Agent.csproj`
 - Please add or update tests for server changes and keep the README/CHANGELOG accurate. Do not describe a detection as "blocking" unless OS-level enforcement exists and is tested.
 
 ## Security issues

@@ -7,11 +7,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>OpenDLP.Agent</AssemblyName>
-    <RootNamespace>OpenDLP.Agent</RootNamespace>
+    <AssemblyName>Leakwarden.Agent</AssemblyName>
+    <RootNamespace>Leakwarden.Agent</RootNamespace>
     <Version>0.13.0</Version>
-    <Authors>OpenDLP Contributors</Authors>
-    <Description>OpenDLP Windows endpoint agent (audit, content inspection, device control)</Description>
+    <Authors>Leakwarden Contributors</Authors>
+    <Description>Leakwarden Windows endpoint agent (audit, content inspection, device control)</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
 

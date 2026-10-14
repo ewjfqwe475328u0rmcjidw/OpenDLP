@@ -1,4 +1,4 @@
-// End-to-end test of the browser extension against a real OpenDLP server, in Chromium.
+// End-to-end test of the browser extension against a real Leakwarden server, in Chromium.
 // Usage: node browser-extension/test/e2e.mjs   (needs: playwright, python with server requirements)
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..");
 const extDir = path.join(root, "browser-extension", "src");
-const work = fs.mkdtempSync(path.join(os.tmpdir(), "opendlp-ext-"));
+const work = fs.mkdtempSync(path.join(os.tmpdir(), "leakwarden-ext-"));
 const SERVER = "http://127.0.0.1:8771", PAGE = "http://127.0.0.1:8772/page.html";
 const ADMIN = crypto.randomBytes(24).toString("hex"), ENROLL = crypto.randomBytes(12).toString("hex");
 const H = { Authorization: "Bearer " + ADMIN, "Content-Type": "application/json" };
@@ -35,8 +35,8 @@ fs.writeFileSync(path.join(work, "policy.json"), JSON.stringify(policy));
 const py = process.platform === "win32" ? "python" : "python3";
 procs.push(spawn(py, ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8771"], {
   cwd: path.join(root, "server"), stdio: "inherit",
-  env: { ...process.env, OPENDLP_TOKEN: crypto.randomBytes(24).toString("hex"), OPENDLP_ADMIN_TOKEN: ADMIN,
-         OPENDLP_ENROLL_CODE: ENROLL, OPENDLP_DB: path.join(work, "db.sqlite"), OPENDLP_POLICY: path.join(work, "policy.json") },
+  env: { ...process.env, LEAKWARDEN_TOKEN: crypto.randomBytes(24).toString("hex"), LEAKWARDEN_ADMIN_TOKEN: ADMIN,
+         LEAKWARDEN_ENROLL_CODE: ENROLL, LEAKWARDEN_DB: path.join(work, "db.sqlite"), LEAKWARDEN_POLICY: path.join(work, "policy.json") },
 }));
 procs.push(spawn(py, ["-m", "http.server", "8772", "--bind", "127.0.0.1", "--directory", path.join(here, "fixtures")], { stdio: "ignore" }));
 

@@ -12,7 +12,7 @@ body:
     validations: {required: true}
   - type: input
     id: version
-    attributes: {label: OpenDLP version / release tag, placeholder: "v0.8.0"}
+    attributes: {label: Leakwarden version / release tag, placeholder: "v0.8.0"}
     validations: {required: true}
   - type: dropdown
     id: result

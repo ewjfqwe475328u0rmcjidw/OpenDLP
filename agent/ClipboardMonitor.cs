@@ -1,8 +1,8 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 /// <summary>
 /// Watches the clipboard for sensitive text. Must run inside the interactive user session (a Windows
@@ -29,7 +29,7 @@ public sealed class ClipboardMonitor : IDisposable
 
     public void Start()
     {
-        _thread = new Thread(Loop) { IsBackground = true, Name = "OpenDLP.Clipboard" };
+        _thread = new Thread(Loop) { IsBackground = true, Name = "Leakwarden.Clipboard" };
         _thread.SetApartmentState(ApartmentState.STA); // WinForms Clipboard requires STA
         _thread.Start();
         _logger.Info("CLIPBOARD_MONITOR", "Clipboard monitor started");

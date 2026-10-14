@@ -1,18 +1,18 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 public sealed class AgentConfig
 {
-    /// <summary>Machine-wide data folder: %ProgramData%\OpenDLP on Windows, /Library/Application Support/OpenDLP on macOS.</summary>
+    /// <summary>Machine-wide data folder: %ProgramData%\Leakwarden on Windows, /Library/Application Support/Leakwarden on macOS.</summary>
     public static string DataRoot => OperatingSystem.IsMacOS()
-        ? "/Library/Application Support/OpenDLP"
+        ? "/Library/Application Support/Leakwarden"
         : OperatingSystem.IsWindows()
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OpenDLP")
-            : "/var/lib/opendlp";
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Leakwarden")
+            : "/var/lib/leakwarden";
 
     public static string DefaultLogDir => Path.Combine(DataRoot, "logs");
 
@@ -33,7 +33,7 @@ public sealed class AgentConfig
     public double HighEntropyThreshold { get; init; } = 7.5;
     /// <summary>PEM-encoded ECDSA P-256 public key. When set, policies must also carry a valid asymmetric signature.</summary>
     public string PolicySigningPublicKey { get; init; } = "";
-    /// <summary>One-time enrollment code (OPENDLP_ENROLL_CODE on the server). Used only when no token is available.</summary>
+    /// <summary>One-time enrollment code (LEAKWARDEN_ENROLL_CODE on the server). Used only when no token is available.</summary>
     public string EnrollmentCode { get; init; } = "";
     public string CredentialPath { get; init; } = Enrollment.DefaultCredentialPath;
     public string DisplayName { get; init; } = "";
@@ -74,11 +74,11 @@ public sealed class AgentConfig
         var credentialPath = Environment.ExpandEnvironmentVariables(Str("CredentialPath", Enrollment.DefaultCredentialPath));
         var serverUrl = Str("ServerUrl", "");
         var agentId = Str("AgentId", Environment.MachineName);
-        var enrollCode = Environment.GetEnvironmentVariable("OPENDLP_ENROLL_CODE");
+        var enrollCode = Environment.GetEnvironmentVariable("LEAKWARDEN_ENROLL_CODE");
         if (string.IsNullOrWhiteSpace(enrollCode)) enrollCode = Str("EnrollmentCode", "");
 
         // Token precedence: environment variable > config file > DPAPI credential store > self-enrollment.
-        var token = Environment.GetEnvironmentVariable("OPENDLP_TOKEN");
+        var token = Environment.GetEnvironmentVariable("LEAKWARDEN_TOKEN");
         if (string.IsNullOrWhiteSpace(token)) token = Str("ApiToken", "");
         if (string.IsNullOrWhiteSpace(token)) token = Enrollment.LoadToken(credentialPath);
         if (string.IsNullOrWhiteSpace(token) && !string.IsNullOrWhiteSpace(enrollCode) && serverUrl.Length > 0)
@@ -148,7 +148,7 @@ public sealed class AgentConfig
     // Demo-grade: derive the local-log key from AgentId + token. Production: DPAPI machine scope / KMS.
     public byte[] DeriveLogKey()
     {
-        var material = $"{AgentId}|{ApiToken}|OpenDLP-Log-Key-v1";
+        var material = $"{AgentId}|{ApiToken}|Leakwarden-Log-Key-v1";
         return SHA256.HashData(Encoding.UTF8.GetBytes(material));
     }
 

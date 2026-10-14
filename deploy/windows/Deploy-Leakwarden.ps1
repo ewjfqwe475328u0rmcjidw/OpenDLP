@@ -1,44 +1,44 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Silent, idempotent OpenDLP agent deployment for many Windows PCs
+  Silent, idempotent Leakwarden agent deployment for many Windows PCs
   (Group Policy startup script, Intune platform script / Win32 app, RMM, PDQ, SCCM).
 .DESCRIPTION
   Downloads the release package (or uses a local / UNC copy), verifies its SHA-256, installs the
   agent as a service with self-enrollment and the watchdog, and writes a log to
-  %ProgramData%\OpenDLP\deploy.log. Machines that already run the requested version are skipped.
+  %ProgramData%\Leakwarden\deploy.log. Machines that already run the requested version are skipped.
   Exit code 0 = installed or already up to date, 1 = failed (see the log).
 .EXAMPLE
-  .\Deploy-OpenDLP.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "CODE"
+  .\Deploy-Leakwarden.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "CODE"
 .EXAMPLE
   # Offline / LAN: copy the zip to a share once, no internet needed on the PCs
-  .\Deploy-OpenDLP.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "CODE" `
-      -PackagePath \\fileserver\it\OpenDLP-windows-x64-v0.13.0.zip -ExpectedSha256 <hash from SHA256SUMS.txt>
+  .\Deploy-Leakwarden.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "CODE" `
+      -PackagePath \\fileserver\it\Leakwarden-windows-x64-v0.13.0.zip -ExpectedSha256 <hash from SHA256SUMS.txt>
 #>
 param(
     [Parameter(Mandatory)][string]$ServerUrl,
     [Parameter(Mandatory)][string]$EnrollmentCode,
     [string]$Version = "v0.13.0",
-    [string]$Repo = "ewjfqwe475328u0rmcjidw/OpenDLP",
+    [string]$Repo = "leakwarden/leakwarden",
     [string]$PackagePath = "",
     [string]$ExpectedSha256 = "",
     [string[]]$SensitivePaths = @(),
-    [string]$InstallDir = "C:\Program Files\OpenDLP",
+    [string]$InstallDir = "C:\Program Files\Leakwarden",
     [switch]$Force
 )
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"   # Invoke-WebRequest is very slow with the progress bar on PS 5.1
-$logDir = Join-Path $env:ProgramData "OpenDLP"
+$logDir = Join-Path $env:ProgramData "Leakwarden"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir "deploy.log"
 function Log([string]$m) { $line = "$(Get-Date -Format o) [$env:COMPUTERNAME] $m"; Add-Content -Path $log -Value $line; Write-Host $line }
 
-$tmp = Join-Path $env:TEMP ("opendlp-deploy-" + [guid]::NewGuid().ToString("N"))
+$tmp = Join-Path $env:TEMP ("leakwarden-deploy-" + [guid]::NewGuid().ToString("N"))
 try {
     $marker = Join-Path $InstallDir "installed-version.txt"
-    if (-not $Force -and (Get-Service OpenDLPAgent -ErrorAction SilentlyContinue) -and (Test-Path $marker) -and
+    if (-not $Force -and (Get-Service LeakwardenAgent -ErrorAction SilentlyContinue) -and (Test-Path $marker) -and
         ((Get-Content $marker -Raw).Trim() -eq $Version)) {
-        Log "OpenDLP $Version already installed - nothing to do"
+        Log "Leakwarden $Version already installed - nothing to do"
         exit 0
     }
 
@@ -46,7 +46,7 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
     if (-not $PackagePath) {
-        $name = "OpenDLP-windows-x64-$Version.zip"
+        $name = "Leakwarden-windows-x64-$Version.zip"
         $base = "https://github.com/$Repo/releases/download/$Version"
         $PackagePath = Join-Path $tmp $name
         Log "Downloading $base/$name"
@@ -82,9 +82,9 @@ try {
     if ($SensitivePaths.Count -gt 0) { $installArgs.SensitivePaths = $SensitivePaths }
     & $installer.FullName @installArgs | ForEach-Object { Log "  $_" }
 
-    if ((Get-Service OpenDLPAgent).Status -ne "Running") { throw "Service OpenDLPAgent is not running after install" }
+    if ((Get-Service LeakwardenAgent).Status -ne "Running") { throw "Service LeakwardenAgent is not running after install" }
     Set-Content -Path $marker -Value $Version
-    Log "OpenDLP $Version installed and running"
+    Log "Leakwarden $Version installed and running"
     exit 0
 }
 catch {

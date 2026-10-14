@@ -1,13 +1,13 @@
 <#
 End-to-end test on a clean Windows machine (used by CI on GitHub's windows-latest runners):
- 1. start the OpenDLP server with fresh secrets
+ 1. start the Leakwarden server with fresh secrets
  2. start the agent in console mode with only an enrollment code (no token)
  3. verify: enrollment, signed-policy download, telemetry upload, and content detection of a file
     containing a Taiwan national ID + test credit card number dropped into a watched folder
  4. verify revocation blocks the agent
 Every failure is printed as a GitHub annotation together with the tail of the agent and server logs.
 #>
-param([string]$AgentExe = "agent/bin/Release/net8.0-windows10.0.19041.0/OpenDLP.Agent.exe")
+param([string]$AgentExe = "agent/bin/Release/net8.0-windows10.0.19041.0/Leakwarden.Agent.exe")
 # Cross-platform: the same test drives the Windows agent and the macOS/Linux agent (agent-unix).
 $ErrorActionPreference = "Stop"
 # Exit codes of native commands are checked explicitly (some calls are EXPECTED to fail).
@@ -19,7 +19,7 @@ trap {
     break
 }
 $root = (Resolve-Path ".").Path
-$work = Join-Path $env:RUNNER_TEMP "opendlp-e2e"
+$work = Join-Path $env:RUNNER_TEMP "leakwarden-e2e"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 foreach ($d in "watch", "logs", "policy") { New-Item -ItemType Directory -Force -Path (Join-Path $work $d) | Out-Null }
 
@@ -47,11 +47,11 @@ function Fail([string]$msg) {
 }
 
 # ---------- server ----------
-$env:OPENDLP_TOKEN = New-Secret
-$env:OPENDLP_ADMIN_TOKEN = $admin
-$env:OPENDLP_ENROLL_CODE = $enroll
-$env:OPENDLP_DB = (Join-Path $work "opendlp.db")
-$env:OPENDLP_DASHBOARD_PASSWORD = "e2e-dashboard"
+$env:LEAKWARDEN_TOKEN = New-Secret
+$env:LEAKWARDEN_ADMIN_TOKEN = $admin
+$env:LEAKWARDEN_ENROLL_CODE = $enroll
+$env:LEAKWARDEN_DB = (Join-Path $work "leakwarden.db")
+$env:LEAKWARDEN_DASHBOARD_PASSWORD = "e2e-dashboard"
 $server = Start-Process -FilePath python -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port $port" `
     -WorkingDirectory (Join-Path $root "server") -RedirectStandardOutput $serverLog -RedirectStandardError "$serverLog.err" -PassThru -NoNewWindow
 $ok = $false
@@ -72,7 +72,7 @@ $cfg = [ordered]@{
     CredentialPath = (Join-Path $work "credentials.bin"); TelemetryEnabled = $true; PolicyPollSeconds = 15
 }
 $cfg | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path (Split-Path $exe) "agent.config.json")
-Remove-Item Env:OPENDLP_TOKEN   # the agent must not see the shared token; it has to enroll
+Remove-Item Env:LEAKWARDEN_TOKEN   # the agent must not see the shared token; it has to enroll
 $agent = Start-Process -FilePath $exe -ArgumentList "--mode console" -WorkingDirectory (Split-Path $exe) `
     -RedirectStandardOutput $agentLog -RedirectStandardError "$agentLog.err" -PassThru -NoNewWindow
 
@@ -132,7 +132,7 @@ if ($fp.message -notmatch 'Board plan' -or $fp.message -notmatch 'vacation\.zip'
 Write-Host "fingerprint event: $($fp.message)"
 
 # 4b. OCR: card number inside a screenshot (only where an OCR engine is installed; CI installs Tesseract on Linux)
-if ($env:OPENDLP_E2E_OCR -eq "1") {
+if ($env:LEAKWARDEN_E2E_OCR -eq "1") {
     Copy-Item (Join-Path $root "tests/e2e/fixtures/card-screenshot.png") (Join-Path $work "watch/screenshot-2026.png")
     $ocr = Wait-Until { Invoke-RestMethod "$base/api/v1/events?agent_id=$agentId&event_type=IMAGE_CONTENT_MATCH" -Headers $H | ForEach-Object { $_ } | Select-Object -First 1 } 90 "IMAGE_CONTENT_MATCH from OCR of a screenshot"
     if ($ocr.message -notmatch 'CREDIT-CARD' -or $ocr.message -notmatch 'source=ocr') { Fail "unexpected OCR event: $($ocr.message)" }
@@ -152,6 +152,6 @@ Write-Output "ok: revoked agent is rejected"
 Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Output "E2E PASSED"
-"## OpenDLP end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- fingerprint match of a renamed copy inside a zip`n- OCR of a screenshot: $(if ($env:OPENDLP_E2E_OCR -eq '1') { 'tested' } else { 'not run on this OS' })`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+"## Leakwarden end-to-end test passed ($([Runtime.InteropServices.RuntimeInformation]::OSDescription))`n`n- enrollment + DPAPI credential store`n- signed policy download`n- telemetry upload`n- content detection (TW national ID, payment card, keyword) with masking`n- fingerprint match of a renamed copy inside a zip`n- OCR of a screenshot: $(if ($env:LEAKWARDEN_E2E_OCR -eq '1') { 'tested' } else { 'not run on this OS' })`n- revocation" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 # The runner fails a step if the LAST native command returned non-zero (e.g. pgrep finding nothing): be explicit.
 exit 0

@@ -1,7 +1,7 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using Microsoft.Extensions.Hosting;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 public enum RunMode
 {

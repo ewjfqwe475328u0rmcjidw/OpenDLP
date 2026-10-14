@@ -1,9 +1,9 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Collections.Concurrent;
 using System.Diagnostics.Eventing.Reader;
 using System.Management;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 
 public sealed class UsbMonitor

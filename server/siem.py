@@ -1,8 +1,8 @@
-# OpenDLP Central Server - SIEM forwarding (syslog, CEF or JSON) - GPL-3.0-only
+# Leakwarden Central Server - SIEM forwarding (syslog, CEF or JSON) - GPL-3.0-only
 """Streams every stored event to a SIEM (Splunk, Microsoft Sentinel, QRadar, Wazuh, Graylog, Elastic...).
 
-OPENDLP_SYSLOG = udp://host:514 | tcp://host:514 | tls://host:6514
-OPENDLP_SYSLOG_FORMAT = cef (default) | json
+LEAKWARDEN_SYSLOG = udp://host:514 | tcp://host:514 | tls://host:6514
+LEAKWARDEN_SYSLOG_FORMAT = cef (default) | json
 
 Messages are RFC 5424 syslog lines. TCP/TLS use octet-counting framing (RFC 6587). Sending happens on a background
 thread with a bounded queue, so a slow or unreachable SIEM never slows down agents; dropped messages are counted.
@@ -49,26 +49,26 @@ def format_cef(ev: dict[str, Any], severity: str, version: str) -> str:
     if ev.get("chain"):
         ext.update({"cs3Label": "auditChain", "cs3": ev["chain"]})
     body = " ".join(f"{k}={_cef_ext(v)}" for k, v in ext.items() if v != "")
-    return f"CEF:0|OpenDLP|OpenDLP|{_cef_header(version)}|{_cef_header(et)}|{_cef_header(et)}|{sev}|{body}"
+    return f"CEF:0|Leakwarden|Leakwarden|{_cef_header(version)}|{_cef_header(et)}|{_cef_header(et)}|{sev}|{body}"
 
 
 def format_json(ev: dict[str, Any], severity: str, _version: str) -> str:
     return json.dumps({**{k: ev.get(k) for k in ("id", "agent_id", "ts", "level", "event_type", "message", "host", "chain")},
-                       "severity": severity, "product": "OpenDLP"}, ensure_ascii=False)
+                       "severity": severity, "product": "Leakwarden"}, ensure_ascii=False)
 
 
 def syslog_line(ev: dict[str, Any], payload: str) -> bytes:
     pri = FACILITY * 8 + _LEVEL_SYSLOG.get(str(ev.get("level") or "INFO").upper(), 6)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     host = (socket.gethostname() or "-").replace(" ", "_")[:255]
-    return f"<{pri}>1 {ts} {host} opendlp - {str(ev.get('event_type') or '-')[:32]} - {payload}".encode("utf-8")
+    return f"<{pri}>1 {ts} {host} leakwarden - {str(ev.get('event_type') or '-')[:32]} - {payload}".encode("utf-8")
 
 
 class Forwarder:
     def __init__(self, url: str, fmt: str = "cef", version: str = "", max_queue: int = 10000):
         u = urlparse(url)
         if u.scheme not in {"udp", "tcp", "tls"} or not u.hostname:
-            raise ValueError("OPENDLP_SYSLOG must look like udp://host:514, tcp://host:514 or tls://host:6514")
+            raise ValueError("LEAKWARDEN_SYSLOG must look like udp://host:514, tcp://host:514 or tls://host:6514")
         self.scheme, self.host, self.port = u.scheme, u.hostname, u.port or (6514 if u.scheme == "tls" else 514)
         self.fmt = format_json if fmt == "json" else format_cef
         self.version = version
@@ -78,7 +78,7 @@ class Forwarder:
         self.last_error = ""
         self._sock: socket.socket | None = None
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="opendlp-siem")
+        self._thread = threading.Thread(target=self._run, daemon=True, name="leakwarden-siem")
         self._thread.start()
 
     def submit(self, ev: dict[str, Any], severity: str) -> None:

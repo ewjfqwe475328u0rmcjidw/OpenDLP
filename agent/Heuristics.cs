@@ -1,7 +1,7 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Collections.Concurrent;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 public sealed class RapidActionDetector
 {

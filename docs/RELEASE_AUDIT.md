@@ -1,4 +1,4 @@
-# OpenDLP v0.13.0 — Release audit
+# Leakwarden v0.13.0 — Release audit
 
 ## Verification status
 
@@ -8,9 +8,9 @@
 | Docker image | built in CI, every push | ✅ |
 | Windows agent + watchdog compile, unit tests (detectors, checksums, masking, policy store, ECDSA, DPAPI) | CI on `windows-latest` | ✅ |
 | Windows console E2E: enrollment, DPAPI token, signed policy, telemetry, detection with masking, revocation | `tests/e2e/run-e2e.ps1` | ✅ |
-| Windows fleet/service E2E: `Deploy-OpenDLP.ps1` (checksum refusal, idempotent), service install, `.docx`/`.xlsx`, **printing**, crash recovery, clean uninstall | `tests/e2e/run-service-e2e.ps1` | ✅ |
+| Windows fleet/service E2E: `Deploy-Leakwarden.ps1` (checksum refusal, idempotent), service install, `.docx`/`.xlsx`, **printing**, crash recovery, clean uninstall | `tests/e2e/run-service-e2e.ps1` | ✅ |
 | macOS + Linux agent build and console E2E | `run-e2e.ps1` on `macos-latest` / `ubuntu-latest` | ✅ |
-| macOS + Linux fleet/service E2E: `deploy-opendlp.sh`, launchd / systemd, 0600 secrets, detection, restart after crash, uninstall | `tests/e2e/run-unix-service-e2e.ps1` | ✅ |
+| macOS + Linux fleet/service E2E: `deploy-leakwarden.sh`, launchd / systemd, 0600 secrets, detection, restart after crash, uninstall | `tests/e2e/run-unix-service-e2e.ps1` | ✅ |
 | Browser extension in Chromium: enrollment, signed policy, blocked/allowed paste and upload, fingerprinted upload, events | `browser-extension/test/e2e.mjs` in CI | ✅ |
 | Detector parity C# / JavaScript / Python | `tests/vectors/detectors.json` in all three test suites | ✅ |
 | Fingerprint of a renamed copy inside a zip (agents) | `run-e2e.ps1` on Windows, macOS, Linux | ✅ |
@@ -35,7 +35,7 @@ This package integrates the pasted v0.7.0 agent implementation with the existing
 - Replaced the old .NET agent entry point with the supplied .NET 8 Windows agent files.
 - Added `policies/default-policy.json` and `GET /api/v1/policy`, including HMAC-SHA256 signatures compatible with the agent's key derivation.
 - Added `304 Not Modified` behavior when the agent already has the current policy version.
-- Server API authentication now fails closed if `OPENDLP_TOKEN` is unset or shorter than 32 bytes; there is no built-in fallback token.
+- Server API authentication now fails closed if `LEAKWARDEN_TOKEN` is unset or shorter than 32 bytes; there is no built-in fallback token.
 - Telemetry requires `X-Agent-Id` and rejects a mismatch between the header and JSON payload.
 - Removed local/legacy agent config files; only an example config is included and real config is ignored by Git.
 - Added API tests for missing/weak/incorrect tokens, required Agent ID, Agent-ID mismatch, telemetry ingestion and batch limits, policy signature, unchanged policy responses, and missing policy files.

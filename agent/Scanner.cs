@@ -1,10 +1,10 @@
-// OpenDLP Agent - GPL-3.0-only
+// Leakwarden Agent - GPL-3.0-only
 using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace OpenDLP.Agent;
+namespace Leakwarden.Agent;
 
 public sealed record ScanHit(string RuleId, string RuleName, string Severity, string Action, int Count, string Sample);
 

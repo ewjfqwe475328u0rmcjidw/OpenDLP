@@ -1,4 +1,4 @@
-# OpenDLP Central Server - dashboard single sign-on (OpenID Connect) - GPL-3.0-only
+# Leakwarden Central Server - dashboard single sign-on (OpenID Connect) - GPL-3.0-only
 """Authorization-code flow with PKCE for Microsoft Entra ID, Google Workspace, Okta, Keycloak, Authentik...
 
 The ID token is verified against the provider's published keys (RS256 / ES256), plus iss, aud, exp and nonce.

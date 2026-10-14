@@ -1,4 +1,4 @@
-# OpenDLP Central Server - content detectors - GPL-3.0-only
+# Leakwarden Central Server - content detectors - GPL-3.0-only
 """Python port of the agent's ContentScanner (agent/Scanner.cs), used for server-side scans (cloud drives).
 
 Behaviour must match the C# agent and the browser extension: all three are tested against

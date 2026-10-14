@@ -16,19 +16,19 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - name: Unit tests
-        run: dotnet test agent.tests/OpenDLP.Agent.Tests.csproj -c Release
+        run: dotnet test agent.tests/Leakwarden.Agent.Tests.csproj -c Release
       - name: Publish (self-contained, no .NET install needed)
         run: |
-          dotnet publish agent/OpenDLP.Agent.csproj -c Release -r win-x64 --self-contained true -o out/agent
-          dotnet publish watchdog/OpenDLP.Watchdog.csproj -c Release -r win-x64 --self-contained true -o out/agent
+          dotnet publish agent/Leakwarden.Agent.csproj -c Release -r win-x64 --self-contained true -o out/agent
+          dotnet publish watchdog/Leakwarden.Watchdog.csproj -c Release -r win-x64 --self-contained true -o out/agent
       - name: Bundle
         shell: pwsh
         run: |
           Copy-Item agent/agent.config.example.json, agent/install-service.ps1, agent/uninstall-service.ps1 out/agent/
           Copy-Item README.md, LICENSE, SECURITY.md, CHANGELOG.md out/
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path out/* -DestinationPath dist/OpenDLP-windows-x64-${{ github.ref_name }}.zip
-          Copy-Item deploy/windows/Deploy-OpenDLP.ps1 dist/
+          Compress-Archive -Path out/* -DestinationPath dist/Leakwarden-windows-x64-${{ github.ref_name }}.zip
+          Copy-Item deploy/windows/Deploy-Leakwarden.ps1 dist/
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -48,14 +48,14 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - name: Publish (self-contained single file)
-        run: dotnet publish agent-unix/OpenDLP.Agent.Unix.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -o pkg/opendlp-agent
+        run: dotnet publish agent-unix/Leakwarden.Agent.Unix.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -o pkg/leakwarden-agent
       - name: Bundle
         run: |
-          cp agent-unix/install.sh agent-unix/uninstall.sh README.md LICENSE pkg/opendlp-agent/
-          chmod +x pkg/opendlp-agent/opendlp-agent pkg/opendlp-agent/*.sh
+          cp agent-unix/install.sh agent-unix/uninstall.sh README.md LICENSE pkg/leakwarden-agent/
+          chmod +x pkg/leakwarden-agent/leakwarden-agent pkg/leakwarden-agent/*.sh
           mkdir -p dist
-          tar -C pkg -czf dist/OpenDLP-${{ matrix.name }}-${{ github.ref_name }}.tar.gz opendlp-agent
-          cp deploy/unix/deploy-opendlp.sh dist/ 2>/dev/null || true
+          tar -C pkg -czf dist/Leakwarden-${{ matrix.name }}-${{ github.ref_name }}.tar.gz leakwarden-agent
+          cp deploy/unix/deploy-leakwarden.sh dist/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
@@ -68,7 +68,7 @@ jobs:
       - name: Package browser extension
         run: |
           mkdir -p dist
-          cd browser-extension/src && zip -qr "../../dist/OpenDLP-browser-extension-${{ github.ref_name }}.zip" .
+          cd browser-extension/src && zip -qr "../../dist/Leakwarden-browser-extension-${{ github.ref_name }}.zip" .
       - uses: actions/upload-artifact@v4
         with:
           name: extension
@@ -88,15 +88,15 @@ jobs:
         with:
           files: dist/*
           body: |
-            **Windows** (`OpenDLP-windows-x64-*.zip`, no .NET install needed): extract, then in an elevated PowerShell in the `agent` folder:
+            **Windows** (`Leakwarden-windows-x64-*.zip`, no .NET install needed): extract, then in an elevated PowerShell in the `agent` folder:
             `.\install-service.ps1 -ServerUrl https://your-server -EnrollmentCode "..." -WithWatchdog`
 
-            **macOS / Linux** (`OpenDLP-macos-arm64|macos-x64|linux-x64-*.tar.gz`): extract, then
-            `sudo ./opendlp-agent/install.sh --server-url https://your-server --enrollment-code "..."`
+            **macOS / Linux** (`Leakwarden-macos-arm64|macos-x64|linux-x64-*.tar.gz`): extract, then
+            `sudo ./leakwarden-agent/install.sh --server-url https://your-server --enrollment-code "..."`
             (macOS: grant the agent Full Disk Access, see docs/DEPLOYMENT.md).
 
-            **Browser extension** (`OpenDLP-browser-extension-*.zip`, Chrome / Edge): blocks pasting and uploading sensitive data to AI chats and cloud drives - see browser-extension/README.md.
+            **Browser extension** (`Leakwarden-browser-extension-*.zip`, Chrome / Edge): blocks pasting and uploading sensitive data to AI chats and cloud drives - see browser-extension/README.md.
 
-            **Many machines at once:** `Deploy-OpenDLP.ps1` (GPO / Intune / RMM) and `deploy-opendlp.sh` (Jamf / Kandji / MDM / SSH) - see docs/DEPLOYMENT.md.
+            **Many machines at once:** `Deploy-Leakwarden.ps1` (GPO / Intune / RMM) and `deploy-leakwarden.sh` (Jamf / Kandji / MDM / SSH) - see docs/DEPLOYMENT.md.
 
             Every package is built from a commit whose CI ran unit tests and end-to-end tests on clean Windows, macOS and Linux VMs (install, enroll, signed policy, detection, crash recovery, uninstall). USB hardware and the interactive clipboard are not covered by automation. Unsigned binaries. Verify downloads with SHA256SUMS.txt.

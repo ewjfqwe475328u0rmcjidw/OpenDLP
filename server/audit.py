@@ -1,8 +1,8 @@
-# OpenDLP Central Server - tamper-evident event log - GPL-3.0-only
+# Leakwarden Central Server - tamper-evident event log - GPL-3.0-only
 """Every stored event carries `chain = HMAC(key, previous_chain || canonical(event))`.
 
 Deleting, editing or re-ordering any row breaks every link after it, and `verify()` reports the first bad row.
-The key comes from OPENDLP_AUDIT_KEY and is never stored in the database, so somebody who only has the database
+The key comes from LEAKWARDEN_AUDIT_KEY and is never stored in the database, so somebody who only has the database
 file cannot rebuild a valid chain after editing it. Without a key a plain SHA-256 chain is used (still detects
 accidental damage and casual edits, but not a determined attacker with database access).
 

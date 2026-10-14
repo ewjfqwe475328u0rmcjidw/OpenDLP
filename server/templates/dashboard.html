@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OpenDLP Dashboard</title>
+  <title>Leakwarden Dashboard</title>
   <style>
     body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 24px; background: #0b1220; color: #e5eefc; }
     h1,h2 { margin: 0 0 12px; }
@@ -35,7 +35,7 @@
   </style>
 </head>
 <body>
-  <h1>OpenDLP Central Dashboard</h1>
+  <h1>Leakwarden Central Dashboard</h1>
   <p class="muted">UTC: {{ now }} · signed in as {{ actor }} <span class="badge">{{ role }}</span>{% if sso %} · <a href="/logout" style="color:#7fb2f0">Sign out</a>{% endif %}{% if role == "admin" %} · <a href="/deploy" style="color:#7fb2f0">Deploy agents</a>{% endif %} · <a href="/fingerprints" style="color:#7fb2f0">Fingerprints</a> · <a href="/reports/monthly.pdf" style="color:#7fb2f0">Monthly report (PDF)</a></p>
 
   <div class="tiles">

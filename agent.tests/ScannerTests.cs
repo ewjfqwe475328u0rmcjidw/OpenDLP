@@ -1,7 +1,7 @@
-// OpenDLP Agent tests - GPL-3.0-only
+// Leakwarden Agent tests - GPL-3.0-only
 using System.IO.Compression;
 using System.Text.Json;
-using OpenDLP.Agent;
+using Leakwarden.Agent;
 using Xunit;
 
 public class ValidatorTests
@@ -41,7 +41,7 @@ public class ScannerTests
 {
     private static ContentScanner Build(params object[] rules)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "leakwarden-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         var store = new PolicyStore(Path.Combine(dir, "cache.json"), Path.Combine(dir, "missing.json"));
         var env = new PolicyEnvelope
@@ -176,7 +176,7 @@ public class PolicyStoreTests
     [Fact]
     public void ApplyPersistsAndReloads()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "leakwarden-tests", Guid.NewGuid().ToString("N"));
         var cache = Path.Combine(dir, "policy.json");
         var store = new PolicyStore(cache, Path.Combine(dir, "none.json"));
         var env = new PolicyEnvelope { Version = 42, PolicyJson = """{"rules":[],"usb":{"mode":"block"}}""", Sig = "x" };
@@ -192,7 +192,7 @@ public class PolicyStoreTests
     [Fact]
     public void InvalidJsonIsRejected()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "leakwarden-tests", Guid.NewGuid().ToString("N"));
         var store = new PolicyStore(Path.Combine(dir, "p.json"), Path.Combine(dir, "d.json"));
         Assert.False(store.Apply(new PolicyEnvelope { Version = 1, PolicyJson = "{not json", Sig = "x" }));
     }
@@ -225,7 +225,7 @@ public class EnrollmentTests
     [Fact]
     public void TokenRoundTripsThroughDpapi()
     {
-        var path = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"), "cred.bin");
+        var path = Path.Combine(Path.GetTempPath(), "leakwarden-tests", Guid.NewGuid().ToString("N"), "cred.bin");
         Enrollment.SaveToken(path, "secret-token-123");
         Assert.Equal("secret-token-123", Enrollment.LoadToken(path));
         Assert.NotEqual("secret-token-123", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(path)));
@@ -260,7 +260,7 @@ public class SharedVectorTests
     {
         foreach (var c in Vectors().GetProperty("scan").EnumerateArray())
         {
-            var dir = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"));
+            var dir = Path.Combine(Path.GetTempPath(), "leakwarden-tests", Guid.NewGuid().ToString("N"));
             var store = new PolicyStore(Path.Combine(dir, "p.json"), Path.Combine(dir, "none.json"));
             var policyJson = "{\"rules\":" + c.GetProperty("rules").GetRawText() + "}";
             Assert.True(store.Apply(new PolicyEnvelope { Version = 1, PolicyJson = policyJson, Sig = "x" }));
@@ -277,7 +277,7 @@ public class ZipAndFingerprintTests
 {
     private static string TempDir()
     {
-        var d = Path.Combine(Path.GetTempPath(), "opendlp-tests", Guid.NewGuid().ToString("N"));
+        var d = Path.Combine(Path.GetTempPath(), "leakwarden-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(d);
         return d;
     }

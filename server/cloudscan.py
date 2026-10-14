@@ -1,4 +1,4 @@
-# OpenDLP Central Server - cloud drive scanning (report-only) - GPL-3.0-only
+# Leakwarden Central Server - cloud drive scanning (report-only) - GPL-3.0-only
 """Finds files in Google Workspace (Drive) and Microsoft 365 (OneDrive) that are shared with *anyone with the link*
 and contain sensitive data (same rules as the agents) or match a registered fingerprint.
 

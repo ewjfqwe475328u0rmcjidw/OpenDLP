@@ -1,5 +1,5 @@
-// OpenDLP browser extension - service worker - GPL-3.0-only
-// Enrolls with the OpenDLP server, keeps the signed policy, queues and uploads events.
+// Leakwarden browser extension - service worker - GPL-3.0-only
+// Enrolls with the Leakwarden server, keeps the signed policy, queues and uploads events.
 const VERSION = chrome.runtime.getManifest().version;
 const POLL_MINUTES = 1;
 
@@ -170,7 +170,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   return true;
 });
 
-chrome.alarms.create("opendlp-sync", { periodInMinutes: POLL_MINUTES });
+chrome.alarms.create("leakwarden-sync", { periodInMinutes: POLL_MINUTES });
 chrome.alarms.onAlarm.addListener(() => { syncPolicy().then(flush); });
 chrome.runtime.onInstalled.addListener(() => syncPolicy().then(flush));
 chrome.runtime.onStartup.addListener(() => syncPolicy().then(flush));

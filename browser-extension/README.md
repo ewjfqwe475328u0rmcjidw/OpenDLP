@@ -1,4 +1,4 @@
-# OpenDLP browser extension (Chrome / Edge)
+# Leakwarden browser extension (Chrome / Edge)
 
 Stops sensitive data from being **pasted, dropped or uploaded** into AI chats, personal cloud drives and file-sharing sites - the most common way data leaves a company today.
 
@@ -9,12 +9,12 @@ Stops sensitive data from being **pasted, dropped or uploaded** into AI chats, p
 
 ## Install for a whole company (managed)
 
-1. Publish the `src` folder (or the release's `OpenDLP-browser-extension-*.zip`) to the **Chrome Web Store** and/or **Microsoft Edge Add-ons** under your own developer account, or host it internally.
+1. Publish the `src` folder (or the release's `Leakwarden-browser-extension-*.zip`) to the **Chrome Web Store** and/or **Microsoft Edge Add-ons** under your own developer account, or host it internally.
 2. Force-install it with **Intune** / **Group Policy** (`ExtensionInstallForcelist`) or your MDM.
 3. Configure it with the managed-storage policy (`3rdparty → extensions → <extension id>`), e.g. for Intune / GPO JSON:
 
 ```json
-{ "serverUrl": "https://dlp.example.com", "enrollmentCode": "<OPENDLP_ENROLL_CODE>", "displayName": "Company laptops" }
+{ "serverUrl": "https://dlp.example.com", "enrollmentCode": "<LEAKWARDEN_ENROLL_CODE>", "displayName": "Company laptops" }
 ```
 
 Optional: `agentId`, `policySigningPublicKey`. Managed settings cannot be changed by the user.

@@ -1,4 +1,4 @@
-# OpenDLP v0.13.0
+# Leakwarden v0.13.0
 
 開源 **端點稽核／偵測 MVP**（Windows Agent + Watchdog + FastAPI 中央伺服器）。目前定位是 **audit-first prototype**，不是已完成的商用 DLP。
 
@@ -9,7 +9,7 @@
 ## 專案結構
 
 ```text
-OpenDLP/
+Leakwarden/
 ├── agent/                  .NET 8 Windows endpoint agent
 ├── watchdog/               Agent watchdog prototype
 ├── server/                 FastAPI API + dashboard
@@ -34,9 +34,9 @@ cd server
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-export OPENDLP_TOKEN="請換成至少 32 bytes 的隨機秘密"            # Agent 用
-export OPENDLP_ADMIN_TOKEN="另一組至少 32 bytes 的隨機秘密"      # 讀取事件／Agent 清單用
-export OPENDLP_DASHBOARD_PASSWORD="儀表板密碼"                   # 未設定則儀表板停用
+export LEAKWARDEN_TOKEN="請換成至少 32 bytes 的隨機秘密"            # Agent 用
+export LEAKWARDEN_ADMIN_TOKEN="另一組至少 32 bytes 的隨機秘密"      # 讀取事件／Agent 清單用
+export LEAKWARDEN_DASHBOARD_PASSWORD="儀表板密碼"                   # 未設定則儀表板停用
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -47,21 +47,21 @@ cd server
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-$env:OPENDLP_TOKEN = "請換成至少 32 bytes 的隨機秘密"
-$env:OPENDLP_ADMIN_TOKEN = "另一組至少 32 bytes 的隨機秘密"
-$env:OPENDLP_DASHBOARD_PASSWORD = "儀表板密碼"
+$env:LEAKWARDEN_TOKEN = "請換成至少 32 bytes 的隨機秘密"
+$env:LEAKWARDEN_ADMIN_TOKEN = "另一組至少 32 bytes 的隨機秘密"
+$env:LEAKWARDEN_DASHBOARD_PASSWORD = "儀表板密碼"
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Dashboard：<http://127.0.0.1:8000/>（HTTP Basic，帳號預設 `admin`）。仍請搭配 TLS 反向代理，不要以明文暴露到網際網路。完整環境變數見 `server/env.example`，變更紀錄見 `CHANGELOG.md`。API 若未設定 `OPENDLP_TOKEN`，或 Token 少於 32 bytes，會拒絕請求。
+Dashboard：<http://127.0.0.1:8000/>（HTTP Basic，帳號預設 `admin`）。仍請搭配 TLS 反向代理，不要以明文暴露到網際網路。完整環境變數見 `server/env.example`，變更紀錄見 `CHANGELOG.md`。API 若未設定 `LEAKWARDEN_TOKEN`，或 Token 少於 32 bytes，會拒絕請求。
 
-政策檔預設為 `policies/default-policy.json`；可用 `OPENDLP_POLICY` 指定其他 JSON 檔案。`GET /api/v1/policy` 會回傳以共享 token 衍生金鑰簽署的 HMAC envelope。這是原型設計，不是公鑰簽章；請使用 TLS 並妥善保護 token。
+政策檔預設為 `policies/default-policy.json`；可用 `LEAKWARDEN_POLICY` 指定其他 JSON 檔案。`GET /api/v1/policy` 會回傳以共享 token 衍生金鑰簽署的 HMAC envelope。這是原型設計，不是公鑰簽章；請使用 TLS 並妥善保護 token。
 
 ## 設定與執行 Agent
 
 1. 在 Windows 上進入 `agent` 資料夾。
 2. 執行 `Copy-Item agent.config.example.json agent.config.json` 複製範例設定。
-3. 設定 `ServerUrl`、`AgentId` 與敏感路徑。建議把 token 放在環境變數 `OPENDLP_TOKEN`，不要把真實 token 提交到 Git。
+3. 設定 `ServerUrl`、`AgentId` 與敏感路徑。建議把 token 放在環境變數 `LEAKWARDEN_TOKEN`，不要把真實 token 提交到 Git。
 4. 確認中央伺服器與 Agent 的 token 完全一致。
 5. 執行：
 
@@ -83,7 +83,7 @@ python -m pytest -q
 python -m compileall -q main.py tests
 ```
 
-Windows/.NET 測試：在 Windows 10/11 + .NET 8 SDK 上執行 `dotnet build agent/OpenDLP.Agent.csproj`，並測試正常／錯誤 token、政策簽章錯誤、離線重試、日誌保留、helper IPC 權限與服務啟停。
+Windows/.NET 測試：在 Windows 10/11 + .NET 8 SDK 上執行 `dotnet build agent/Leakwarden.Agent.csproj`，並測試正常／錯誤 token、政策簽章錯誤、離線重試、日誌保留、helper IPC 權限與服務啟停。
 
 ## License
 
