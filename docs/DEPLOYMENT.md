@@ -20,7 +20,7 @@ These behaviours are exercised in CI on clean Windows, macOS and Linux VMs (`tes
 .\Deploy-Leakwarden.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "CODE"
 # offline / LAN share
 .\Deploy-Leakwarden.ps1 -ServerUrl https://dlp.example.com -EnrollmentCode "CODE" `
-    -PackagePath \\fileserver\it\Leakwarden-windows-x64-v0.13.0.zip -ExpectedSha256 <hash>
+    -PackagePath \\fileserver\it\Leakwarden-windows-x64-v0.15.0.zip -ExpectedSha256 <hash>
 # optional: -SensitivePaths "D:\Finance","{AllUsers}\Documents"   -Force (reinstall)
 ```
 
@@ -28,14 +28,14 @@ These behaviours are exercised in CI on clean Windows, macOS and Linux VMs (`tes
 
 ```powershell
 $f = Join-Path $env:TEMP 'Deploy-Leakwarden.ps1'
-Invoke-WebRequest -UseBasicParsing 'https://github.com/<owner>/<repo>/releases/download/v0.13.0/Deploy-Leakwarden.ps1' -OutFile $f
+Invoke-WebRequest -UseBasicParsing 'https://github.com/<owner>/<repo>/releases/download/v0.15.0/Deploy-Leakwarden.ps1' -OutFile $f
 & $f -ServerUrl 'https://dlp.example.com' -EnrollmentCode 'CODE'
 exit $LASTEXITCODE
 ```
 
 Run this script using the logged on credentials: **No**. Run script in 64-bit PowerShell host: **Yes**. Assign to a device group.
 
-**Group Policy** - Computer Configuration → Policies → Windows Settings → Scripts (Startup/Shutdown) → Startup → *PowerShell Scripts* tab → Add `Deploy-Leakwarden.ps1` (copy it to `\\domain\SYSVOL\...\Scripts\Startup`) with parameters `-ServerUrl https://dlp.example.com -EnrollmentCode CODE -PackagePath \\fileserver\it\Leakwarden-windows-x64-v0.13.0.zip -ExpectedSha256 <hash>`. Startup scripts run as SYSTEM at boot.
+**Group Policy** - Computer Configuration → Policies → Windows Settings → Scripts (Startup/Shutdown) → Startup → *PowerShell Scripts* tab → Add `Deploy-Leakwarden.ps1` (copy it to `\\domain\SYSVOL\...\Scripts\Startup`) with parameters `-ServerUrl https://dlp.example.com -EnrollmentCode CODE -PackagePath \\fileserver\it\Leakwarden-windows-x64-v0.15.0.zip -ExpectedSha256 <hash>`. Startup scripts run as SYSTEM at boot.
 
 **RMM / PDQ / SCCM** - run the script as SYSTEM with the same parameters.
 
@@ -44,9 +44,9 @@ Run this script using the logged on credentials: **No**. Run script in 64-bit Po
 `deploy-leakwarden.sh` (attached to every release) picks `macos-arm64`, `macos-x64` or `linux-x64` automatically; macOS uses launchd, Linux uses systemd. The service manager restarts the agent if it stops.
 
 ```bash
-curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.13.0/deploy-leakwarden.sh \
+curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.15.0/deploy-leakwarden.sh \
   | sudo bash -s -- --server-url https://dlp.example.com --enrollment-code "CODE"
-# local copy:  --package /path/Leakwarden-macos-arm64-v0.13.0.tar.gz --sha256 <hash>
+# local copy:  --package /path/Leakwarden-macos-arm64-v0.15.0.tar.gz --sha256 <hash>
 # passed to install.sh:  --paths "{AllUsers}/Documents,/srv/finance"  --agent-id NAME  --display-name "Finance laptop"
 ```
 
@@ -62,7 +62,7 @@ curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.13.0/deploy-le
   tasks:
     - name: Deploy Leakwarden agent
       ansible.builtin.shell: >
-        curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.13.0/deploy-leakwarden.sh
+        curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.15.0/deploy-leakwarden.sh
         | bash -s -- --server-url https://dlp.example.com --enrollment-code "{{ leakwarden_enroll_code }}"
 ```
 

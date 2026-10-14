@@ -1,4 +1,4 @@
-# Leakwarden v0.13.0
+# Leakwarden v0.15.0
 
 *Formerly OpenDLP.* Open-source **endpoint data-loss-prevention (audit & detection)** for small and medium businesses: agents for **Windows, macOS and Linux**, a watchdog, and a FastAPI central server with dashboard. It is an **audit-first prototype**, not a finished commercial DLP product.
 

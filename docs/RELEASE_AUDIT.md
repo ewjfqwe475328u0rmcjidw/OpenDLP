@@ -1,4 +1,4 @@
-# Leakwarden v0.13.0 — Release audit
+# Leakwarden v0.15.0 — Release audit
 
 ## Verification status
 

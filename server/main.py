@@ -102,7 +102,7 @@ OIDC_VIEWERS = os.environ.get("LEAKWARDEN_OIDC_VIEWERS", "")
 SESSION_HOURS = int(os.environ.get("LEAKWARDEN_SESSION_HOURS", "8"))
 # Signs dashboard session cookies. If unset a random key is used (everyone is signed out on restart).
 SESSION_SECRET = (os.environ.get("LEAKWARDEN_SESSION_SECRET", "").strip() or secrets.token_hex(32)).encode("utf-8")
-VERSION = "0.13.0"
+VERSION = "0.15.0"
 
 _stop_scheduler = threading.Event()
 

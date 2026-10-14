@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Leakwarden.Watchdog</AssemblyName>
     <RootNamespace>Leakwarden.Watchdog</RootNamespace>
-    <Version>0.13.0</Version>
+    <Version>0.15.0</Version>
     <Authors>Leakwarden Contributors</Authors>
     <Description>Leakwarden watchdog process for agent keep-alive</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>

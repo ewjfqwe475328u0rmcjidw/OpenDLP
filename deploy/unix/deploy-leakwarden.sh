@@ -1,7 +1,7 @@
 #!/bin/bash
 # Silent Leakwarden agent deployment for many Macs / Linux machines (Jamf, Kandji, Intune for Mac, Mosyle, SSH, Ansible).
 #
-#   curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.13.0/deploy-leakwarden.sh \
+#   curl -fsSL https://github.com/<owner>/<repo>/releases/download/v0.15.0/deploy-leakwarden.sh \
 #     | sudo bash -s -- --server-url https://dlp.example.com --enrollment-code "CODE"
 #
 # Picks the right package for the CPU/OS, verifies its SHA-256 and runs install.sh. Re-running on a machine that
@@ -9,7 +9,7 @@
 #   --package FILE --sha256 HASH   use a local / file-share copy instead of downloading
 set -euo pipefail
 
-VERSION="v0.13.0"; REPO="leakwarden/leakwarden"; PACKAGE=""; SHA=""; FORCE=0
+VERSION="v0.15.0"; REPO="leakwarden/leakwarden"; PACKAGE=""; SHA=""; FORCE=0
 INSTALL_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in

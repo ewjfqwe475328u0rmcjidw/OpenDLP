@@ -1,8 +1,8 @@
 # Changelog
 
-> The project was renamed from **OpenDLP** to **Leakwarden** in 0.13.0 (new home: github.com/leakwarden/leakwarden; old links redirect). Entries below 0.13.0 use the old name.
+> The project was renamed from **OpenDLP** to **Leakwarden** in 0.15.0 (new home: github.com/leakwarden/leakwarden; old links redirect). Entries below 0.15.0 use the old name. (v0.14.0 was an interim release, published under the old name, of part of the work listed under 0.15.0.)
 
-## 0.13.0 — renamed to Leakwarden; browser extension, fingerprints, cloud and e-mail scanning, OCR, audit trail, SSO
+## 0.15.0 — renamed to Leakwarden; browser extension, fingerprints, cloud and e-mail scanning, OCR, audit trail, SSO
 - **Renamed to Leakwarden** (formerly OpenDLP, which clashed with an unrelated 2012 tool): package, service, binary, setting (`LEAKWARDEN_*`) and download names all changed.
 - **Text in images (OCR)**: screenshots, photos and scans in watched folders and on USB drives are read on the device (built-in Windows OCR; Tesseract on macOS/Linux) and checked with the same rules → `IMAGE_CONTENT_MATCH`. On by default, rate-limited. Tested end-to-end with Tesseract on Linux in CI. Windows' built-in OCR omits payment-card numbers by design, so Tesseract is used first when installed.
 - **Screen watermark (Windows)**: faint, click-through `{user} · {host} · {date}` tiled across all monitors; off by default, ideal per department via group policies.

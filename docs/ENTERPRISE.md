@@ -27,7 +27,7 @@ The dashboard shows the result as a tile, and the monthly PDF report includes an
 - Do not change the key later; records written under the old key will no longer verify.
 - Retention purges (`LEAKWARDEN_RETENTION_DAYS`) delete the oldest records and move a verified anchor forward, so the
   chain keeps verifying.
-- Records written by versions before 0.13.0 are not covered; the chain starts with the first record after upgrade.
+- Records written by versions before 0.15.0 are not covered; the chain starts with the first record after upgrade.
 - For evidence that must survive a full server compromise, also forward events to a SIEM (below): the `cs3`
   field of every CEF message carries the chain value, so the copy in your SIEM can be compared with the server.
 

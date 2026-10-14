@@ -1,4 +1,4 @@
-# Security Policy & Threat Model (Leakwarden v0.13.0)
+# Security Policy & Threat Model (Leakwarden v0.15.0)
 
 ## 1. Product scope
 

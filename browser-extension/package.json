@@ -1,7 +1,7 @@
 {
   "name": "leakwarden-browser-extension",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.15.0",
   "license": "GPL-3.0-only",
   "scripts": {
     "test": "node --test test/detectors.test.js",

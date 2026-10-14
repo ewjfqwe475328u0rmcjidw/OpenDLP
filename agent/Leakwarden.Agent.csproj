@@ -9,7 +9,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Leakwarden.Agent</AssemblyName>
     <RootNamespace>Leakwarden.Agent</RootNamespace>
-    <Version>0.13.0</Version>
+    <Version>0.15.0</Version>
     <Authors>Leakwarden Contributors</Authors>
     <Description>Leakwarden Windows endpoint agent (audit, content inspection, device control)</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>

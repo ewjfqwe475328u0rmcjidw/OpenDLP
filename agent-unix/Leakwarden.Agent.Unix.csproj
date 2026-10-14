@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>leakwarden-agent</AssemblyName>
     <RootNamespace>Leakwarden.Agent</RootNamespace>
-    <Version>0.13.0</Version>
+    <Version>0.15.0</Version>
     <Authors>Leakwarden Contributors</Authors>
     <Description>Leakwarden endpoint agent for macOS and Linux (file monitoring, content inspection, removable volumes)</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
