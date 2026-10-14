@@ -200,7 +200,7 @@ Scale examples: 200 endpoints = $200/month or $2,000/year; 500 = $500/month or $
 - **Provided "as is", without warranty and without support.** The kit is tooling, not a service: no installation help, no response-time guarantee, no incident response. It does not guarantee that data leaks are prevented or detected; you remain responsible for your deployment, your data and your compliance obligations. To the maximum extent permitted by law, total liability is limited to the fees paid in the previous 3 months.
 - Cancel any time; you keep the version you have.
 
-Interested? [Let us know here](../../issues/new?template=deploy-kit-interest.yml) - nothing to pay now.
+Interested? [Fill in this short private form](https://docs.google.com/forms/d/1emgAs68e8oTmbshVVhD7F2_brWlU8h1T-gMNsWEYiZ8/viewform) - only we see your answers, and there is nothing to pay now.
 
 ## Contributing
 
