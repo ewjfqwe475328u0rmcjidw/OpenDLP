@@ -13,7 +13,7 @@ jobs:
         python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -r server/requirements.txt -r server/requirements-dev.txt
@@ -36,7 +36,7 @@ jobs:
       - name: Unit tests
         shell: pwsh
         run: ./tools/ci/run.ps1 "dotnet test agent.tests/Leakwarden.Agent.Tests.csproj -c Release --logger 'console;verbosity=normal'"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install server
@@ -69,7 +69,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r server/requirements.txt
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -r server/requirements.txt
