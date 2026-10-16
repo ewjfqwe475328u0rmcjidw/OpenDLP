@@ -9,6 +9,6 @@
     "package": "cd src && zip -qr ../leakwarden-browser-extension.zip ."
   },
   "devDependencies": {
-    "playwright": "1.56.1"
+    "playwright": "1.64.0"
   }
 }
