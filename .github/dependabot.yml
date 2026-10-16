@@ -1,0 +1,21 @@
+# Monthly dependency and security updates, opened as pull requests and checked by CI.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /server
+    schedule: {interval: monthly}
+    open-pull-requests-limit: 5
+  - package-ecosystem: nuget
+    directories: [/agent, /agent-unix, /agent.tests, /watchdog]
+    schedule: {interval: monthly}
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /browser-extension
+    schedule: {interval: monthly}
+    open-pull-requests-limit: 3
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: monthly}
+  - package-ecosystem: docker
+    directory: /server
+    schedule: {interval: monthly}
